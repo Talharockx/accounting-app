@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/* Light (default document; dark class on html from next-themes) */
+:root {
+  --background: #f9fafb;
+  --foreground: #0f172a;
+  --lv-heading: #0f172a;
+  --lv-muted: #64748b;
+  --lv-muted-strong: #475569;
+  --lv-border: rgba(15, 23, 42, 0.09);
+  --lv-glass: rgba(255, 255, 255, 0.78);
+  --lv-glass-strong: rgba(255, 255, 255, 0.92);
+  --lv-surface-soft: rgba(255, 255, 255, 0.72);
+  --lv-surface-muted: rgba(241, 245, 249, 0.95);
+  --lv-skeleton: #e2e8f0;
+  --lv-skeleton-dark: #e2e8f0;
+  --lv-accent: #2563eb;
+  --lv-accent-soft: rgba(37, 99, 235, 0.12);
+  --lv-glow-tl: rgba(37, 99, 235, 0.15);
+  --lv-glow-br: rgba(14, 165, 233, 0.12);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0a0f1a;
+  --foreground: #f1f5f9;
+  --lv-heading: #f8fafc;
+  --lv-muted: #94a3b8;
+  --lv-muted-strong: #cbd5e1;
+  --lv-border: rgba(255, 255, 255, 0.12);
+  --lv-glass: rgba(255, 255, 255, 0.06);
+  --lv-glass-strong: rgba(15, 23, 42, 0.55);
+  --lv-surface-soft: rgba(255, 255, 255, 0.05);
+  --lv-surface-muted: rgba(255, 255, 255, 0.09);
+  --lv-skeleton: rgba(255, 255, 255, 0.07);
+  --lv-skeleton-dark: rgba(255, 255, 255, 0.06);
+  --lv-accent: #38bdf8;
+  --lv-accent-soft: rgba(56, 189, 248, 0.12);
+  --lv-glow-tl: rgba(37, 99, 235, 0.35);
+  --lv-glow-br: rgba(99, 102, 241, 0.25);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer utilities {
+  .lv-page {
+    @apply min-h-screen text-[var(--foreground)] transition-colors duration-200;
+    background-color: var(--background);
+    background-image: radial-gradient(ellipse 120% 80% at 50% -25%, var(--lv-glow-tl), transparent 52%),
+      radial-gradient(ellipse 70% 50% at 100% 100%, var(--lv-glow-br), transparent 45%);
+  }
+
+  .dark .lv-page {
+    background-image: radial-gradient(ellipse 100% 80% at 50% -20%, rgba(56, 189, 248, 0.14), transparent 50%),
+      radial-gradient(ellipse 65% 45% at 100% 0%, rgba(99, 102, 241, 0.12), transparent 42%),
+      radial-gradient(circle at 0% 100%, rgba(14, 165, 233, 0.08), transparent 35%);
+  }
+
+  .glass-panel {
+    @apply backdrop-blur-xl;
+    border: 1px solid var(--lv-border);
+    background: var(--lv-glass);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .dark .glass-panel {
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-panel-strong {
+    @apply backdrop-blur-xl;
+    border: 1px solid var(--lv-border);
+    background: var(--lv-glass-strong);
+  }
+
+  .lv-input {
+    @apply w-full rounded-xl border px-4 py-3 text-sm outline-none transition placeholder:opacity-50;
+    border-color: var(--lv-border);
+    background: var(--lv-surface-muted);
+    color: var(--lv-heading);
+  }
+
+  .lv-input:focus {
+    border-color: color-mix(in srgb, var(--lv-accent) 55%, var(--lv-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lv-accent) 18%, transparent);
+  }
+
+  .dark .lv-input {
+    background: rgba(15, 23, 42, 0.65);
+  }
+}
+
+body {
+  min-height: 100%;
+}
+
+html {
+  color-scheme: light dark;
+}
