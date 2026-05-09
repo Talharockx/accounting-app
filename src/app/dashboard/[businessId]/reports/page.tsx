@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ReportsPerformanceCharts } from "@/components/dashboard/reports-performance-charts";
+import { BentoCell } from "@/components/ui/bento-cell";
 import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import {
   buildDailySeries,
@@ -29,6 +30,7 @@ import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils/cn";
 
 type BusinessRow = {
   id: string;
@@ -181,7 +183,8 @@ export default function ReportsPage({
 
   useEffect(() => {
     if (!businessId || !chartFetchRange) return;
-    void loadTransactions();
+    const id = window.setTimeout(() => void loadTransactions(), 0);
+    return () => window.clearTimeout(id);
   }, [businessId, chartFetchRange, loadTransactions]);
 
   const businessType = business?.business_type ?? "restaurant";
@@ -256,12 +259,12 @@ export default function ReportsPage({
 
   if (bizLoading) {
     return (
-      <div className="glass-panel rounded-2xl p-8">
-        <Skeleton className="mb-6 h-8 w-56" />
+      <div className="glass-panel rounded-[1.625rem] p-8">
+        <Skeleton className="mb-6 h-9 w-56 rounded-xl" />
         <div className="grid gap-4 sm:grid-cols-3">
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-32 rounded-[1.625rem]" />
+          <Skeleton className="h-32 rounded-[1.625rem]" />
+          <Skeleton className="h-32 rounded-[1.625rem]" />
         </div>
       </div>
     );
@@ -269,7 +272,7 @@ export default function ReportsPage({
 
   if (!business) {
     return (
-      <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 text-rose-100">
+      <div className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-traffic-critical)_42%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_10%,transparent)] p-6 text-sm text-[var(--lv-traffic-critical)]">
         {txError || "Business not found."}
       </div>
     );
@@ -281,18 +284,22 @@ export default function ReportsPage({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-white/15 bg-white/10 p-6 backdrop-blur">
+      <section className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-wide text-cyan-200">Reports</p>
-            <h1 className="mt-1 text-2xl font-semibold text-white">Performance & exports</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Visual trends and monthly totals follow the same daily-entry rules as the rest of your
-              dashboard. Pick any month to review history on desktop or mobile.
+            <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
+              Reports
+            </p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
+              Performance & exports
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
+              Visual trends and monthly totals follow the same daily-entry rules as the rest of your dashboard. Pick
+              any month to review history on desktop or mobile.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">
-            <label className="text-xs font-medium text-slate-400" htmlFor="report-month">
+            <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor="report-month">
               Month
             </label>
             <input
@@ -301,7 +308,7 @@ export default function ReportsPage({
               max={maxMonthInput}
               value={monthInput}
               onChange={(e) => setMonthInput(e.target.value)}
-              className="rounded-xl border border-white/20 bg-slate-900/80 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/60"
+              className="lv-tabular-mono rounded-xl border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-surface-muted)] px-3 py-2.5 text-sm text-[var(--lv-heading)] outline-none focus:border-[color-mix(in_srgb,var(--lv-accent)_48%,transparent)] dark:bg-white/[0.07]"
             />
           </div>
         </div>
@@ -311,64 +318,68 @@ export default function ReportsPage({
         <p className="text-sm text-slate-400">Updating figures…</p>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/15 to-slate-900/60 p-5 backdrop-blur">
-          <p className="text-xs font-medium uppercase tracking-wide text-cyan-200/90">
-            Total monthly sales
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <BentoCell className="p-6 sm:col-span-1">
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+            Monthly sales
           </p>
-          <p className="mt-3 text-2xl font-semibold text-white tabular-nums sm:text-3xl">
+          <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
             {txLoading || txError ? "—" : currency(monthlyTotals.sales)}
           </p>
-          <p className="mt-2 text-xs text-slate-400">{calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)}</p>
-        </div>
-        <div className="rounded-2xl border border-indigo-400/25 bg-gradient-to-br from-indigo-500/15 to-slate-900/60 p-5 backdrop-blur">
-          <p className="text-xs font-medium uppercase tracking-wide text-indigo-100/85">
-            Total monthly expenses
+          <p className="mt-3 text-xs text-[var(--lv-muted-strong)] opacity-80 transition-opacity group-hover/lv-bento:opacity-100">
+            {calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)}
           </p>
-          <p className="mt-3 text-2xl font-semibold text-white tabular-nums sm:text-3xl">
+        </BentoCell>
+        <BentoCell className="p-6">
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+            Monthly expenses
+          </p>
+          <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
             {txLoading || txError ? "—" : currency(monthlyTotals.expenses)}
           </p>
-          <p className="mt-2 text-xs text-slate-400">
-            Purchases + operating expenses (restaurant); inventory + overhead (mobile)
+          <p className="pointer-events-none mt-3 max-h-0 overflow-hidden text-xs leading-relaxed text-[var(--lv-muted-strong)] opacity-0 transition-[max-height,opacity] duration-300 group-hover/lv-bento:max-h-24 group-hover/lv-bento:opacity-100">
+            Purchases + operating expenses for restaurants; inventory + overhead envelopes for mobile retail.
           </p>
-        </div>
-        <div className="rounded-2xl border border-emerald-400/25 bg-gradient-to-br from-emerald-500/15 to-slate-900/60 p-5 backdrop-blur">
-          <p className="text-xs font-medium uppercase tracking-wide text-emerald-100/90">
-            Total net profit
+        </BentoCell>
+        <BentoCell featured className="p-6 sm:min-h-[160px]">
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-accent)]">
+            Net profit
           </p>
           <p
-            className={`mt-3 text-2xl font-semibold tabular-nums sm:text-3xl ${
-              monthlyTotals.profit >= 0 ? "text-emerald-200" : "text-rose-300"
-            }`}
+            className={cn(
+              "lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight sm:text-[2.35rem]",
+              monthlyTotals.profit > 0 && "text-[var(--lv-traffic-positive)]",
+              monthlyTotals.profit < 0 && "text-[var(--lv-traffic-critical)]",
+              monthlyTotals.profit === 0 && "text-[var(--lv-traffic-neutral)]",
+            )}
           >
             {txLoading || txError ? "—" : currency(monthlyTotals.profit)}
           </p>
-          <p className="mt-2 text-xs text-slate-400">Sales + repair income − expenses for the full month.</p>
-        </div>
+          <p className="mt-3 text-xs text-[var(--lv-muted-strong)]">
+            Sales + repair income − expenses for the full month.
+          </p>
+        </BentoCell>
       </section>
 
-      <section className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur sm:p-6">
+      <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-white">Performance trends</h2>
-            <p className="mt-1 text-sm text-slate-400">
+            <h2 className="text-lg font-bold tracking-tight text-[var(--lv-heading)]">Performance trends</h2>
+            <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
               Bar comparison uses the last 30 days ending on{" "}
-              <span className="text-slate-200">{chartFetchRange.barEnd}</span> (aligned with your chosen
-              month). The profit line spans the selected month through today where applicable.
+              <span className="lv-tabular-mono font-medium text-[var(--lv-heading)]">{chartFetchRange.barEnd}</span>{" "}
+              (aligned with your chosen month). The profit line spans the selected month through today where applicable.
             </p>
           </div>
           <button
             type="button"
             disabled={pdfBusy || txLoading}
             onClick={() => void handleDownloadPdf()}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500/90 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:scale-[1.02] hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300 disabled:shadow-none disabled:hover:scale-100 dark:bg-cyan-400/90"
+            className="glass-panel inline-flex shrink-0 items-center justify-center gap-2 rounded-[1rem] bg-gradient-to-r from-cyan-400/95 to-[color-mix(in_srgb,var(--lv-accent)_88%,cyan)] px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-[var(--lv-bento-shadow)] transition-[transform,box-shadow] hover:scale-[1.02] hover:shadow-[var(--lv-bento-shadow-hover)] disabled:cursor-not-allowed disabled:bg-slate-500/40 disabled:text-slate-700 disabled:shadow-none disabled:hover:scale-100 dark:disabled:bg-slate-600/50 dark:disabled:text-slate-300 dark:text-slate-950"
           >
             {pdfBusy ? (
               <>
-                <span
-                  className="size-4 animate-spin rounded-full border-2 border-slate-900/30 border-t-slate-900"
-                  aria-hidden
-                />
+                <span className="size-4 animate-spin rounded-full border-2 border-white/35 border-t-slate-900" aria-hidden />
                 Generating PDF…
               </>
             ) : (
@@ -377,24 +388,29 @@ export default function ReportsPage({
           </button>
         </div>
         {(pdfMessage || pdfError) && (
-          <p className={`mb-4 text-sm ${pdfError ? "text-rose-300" : "text-emerald-200"}`}>
+          <p
+            className={cn(
+              "mb-4 text-sm font-medium",
+              pdfError ? "text-[var(--lv-traffic-critical)]" : "text-[var(--lv-traffic-positive)]",
+            )}
+          >
             {pdfError || pdfMessage}
           </p>
         )}
         {txError ? (
-          <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
+          <p className="text-sm font-medium text-[var(--lv-traffic-critical)]" role="alert">
             {txError}
           </p>
         ) : txLoading ? (
           <div className="space-y-4">
-            <Skeleton className="h-72 w-full max-w-[100vw] rounded-2xl" />
-            <Skeleton className="h-72 w-full max-w-[100vw] rounded-2xl" />
+            <Skeleton className="h-72 w-full max-w-[100vw] rounded-[1.625rem]" />
+            <Skeleton className="h-72 w-full max-w-[100vw] rounded-[1.625rem]" />
           </div>
         ) : !hasTransactionsInRange ? (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-[var(--lv-border)] bg-[var(--lv-surface-muted)] px-6 py-16 text-center dark:bg-white/[0.04]"
+            className="flex flex-col items-center justify-center gap-4 rounded-[1.625rem] border border-dashed border-[color-mix(in_srgb,var(--lv-accent)_40%,transparent)] bg-[var(--lv-surface-muted)] px-6 py-16 text-center dark:bg-white/[0.04]"
           >
             <ReportsEmptyGlyph className="h-24 w-24 text-[var(--lv-accent)] opacity-80" />
             <div className="max-w-md">

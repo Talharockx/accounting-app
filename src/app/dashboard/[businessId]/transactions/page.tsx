@@ -21,6 +21,8 @@ import type { TransactionListRow } from "@/lib/supabase/map-transactions";
 import { mapTransactionListRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { MidnightField } from "@/components/ui/midnight-field";
+import { PressableButton } from "@/components/ui/pressable";
 
 type BusinessType = "restaurant" | "mobile_shop";
 
@@ -316,31 +318,35 @@ export default function TransactionsPage({
 
   return (
     <section className="space-y-4">
-      <div className="rounded-2xl border border-white/15 bg-white/10 p-6 backdrop-blur">
-        <h1 className="text-2xl font-semibold text-white">Transactions</h1>
-        <p className="mt-2 text-sm text-slate-300">
-          Consolidated snapshots per calendar day derived from structured Daily Entry records.
+      <div className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
+        <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
+          Ledger
+        </p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">Transactions</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
+          Consolidated snapshots per calendar day derived from structured Daily Entry records. Numeric columns use
+          monospace tabular alignment for faster reconciliation.
         </p>
       </div>
 
       {error ? (
-        <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+        <p className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-traffic-critical)_42%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_10%,transparent)] px-4 py-3 text-sm text-[var(--lv-traffic-critical)]">
           {error}
         </p>
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-slate-400">Loading records…</p>
+        <p className="text-sm text-[var(--lv-muted-strong)]">Loading records…</p>
       ) : rawRows.length === 0 ? (
-        <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">
-          No transactions yet. Use <strong className="text-slate-300">Daily Entry</strong> to add
-          records.
+        <p className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
+          No transactions yet. Use{" "}
+          <strong className="font-semibold text-[var(--lv-heading)]">Daily Entry</strong> to add records.
         </p>
       ) : businessType === "restaurant" ? (
-        <div className="overflow-x-auto rounded-2xl border border-white/15 bg-white/5 backdrop-blur">
-          <table className="w-full min-w-[860px] text-left text-sm">
+        <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] backdrop-blur-3xl shadow-[var(--lv-bento-shadow)]">
+          <table className="lv-tabular-mono w-full min-w-[860px] text-left text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 text-right font-medium">Cash</th>
                 <th className="px-4 py-3 text-right font-medium">Bank</th>
@@ -354,23 +360,29 @@ export default function TransactionsPage({
               {summariesRestaurant.map((row) => (
                 <tr
                   key={row.date}
-                  className="border-b border-white/5 text-slate-200 last:border-0 hover:bg-white/5"
+                  className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_35%,transparent)] text-[var(--lv-heading)] last:border-0 hover:bg-[color-mix(in_srgb,var(--lv-accent)_05%,transparent)]"
                 >
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-300">{row.date}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-white">
+                  <td className="whitespace-nowrap px-4 py-3 text-[var(--lv-muted-strong)]">{row.date}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
                     {formatCurrency(row.cash)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-white">
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
                     {formatCurrency(row.bank)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.purchases)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.expenses)}
                   </td>
                   <td
-                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${row.profit >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold tracking-tight ${
+                      row.profit > 0
+                        ? "text-[var(--lv-traffic-positive)]"
+                        : row.profit < 0
+                          ? "text-[var(--lv-traffic-critical)]"
+                          : "text-[var(--lv-traffic-neutral)]"
+                    }`}
                   >
                     {formatCurrency(row.profit)}
                   </td>
@@ -381,7 +393,7 @@ export default function TransactionsPage({
                         aria-label="Edit day"
                         title="Edit day"
                         onClick={() => openEditRestaurant(row)}
-                        className="rounded-lg border border-white/15 p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-muted-strong)] transition hover:bg-[#ffffff07] hover:text-[var(--lv-heading)] active:scale-[0.97]"
                       >
                         <IconPencil className="h-4 w-4" />
                       </button>
@@ -391,7 +403,7 @@ export default function TransactionsPage({
                         title="Delete day"
                         disabled={deletingDate === row.date}
                         onClick={() => setPendingDeleteDate(row.date)}
-                        className="rounded-lg border border-white/15 p-2 text-rose-300 transition hover:bg-rose-500/20 hover:text-rose-200 disabled:opacity-50"
+                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-traffic-critical)] transition hover:bg-[color-mix(in_srgb,var(--lv-traffic-critical)_12%,transparent)] hover:text-[var(--lv-traffic-critical)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                       >
                         <IconTrash className="h-4 w-4" />
                       </button>
@@ -403,10 +415,10 @@ export default function TransactionsPage({
           </table>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] backdrop-blur dark:bg-white/5">
-          <table className="w-full min-w-[1040px] text-left text-sm">
+        <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] backdrop-blur-3xl shadow-[var(--lv-bento-shadow)]">
+          <table className="lv-tabular-mono w-full min-w-[1040px] text-left text-sm">
             <thead>
-              <tr className="border-b border-[var(--lv-border)] text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">
+              <tr className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 text-right font-medium">Phones (rev)</th>
                 <th className="px-4 py-3 text-right font-medium">Margin</th>
@@ -422,10 +434,10 @@ export default function TransactionsPage({
               {summariesMobile.map((row) => (
                 <tr
                   key={row.date}
-                  className="border-b border-white/5 text-slate-200 last:border-0 hover:bg-white/5"
+                  className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_35%,transparent)] text-[var(--lv-heading)] last:border-0 hover:bg-[color-mix(in_srgb,var(--lv-accent)_05%,transparent)]"
                 >
                   <td className="whitespace-nowrap px-4 py-3 text-[var(--lv-muted-strong)]">{row.date}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-heading)]">
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
                     {formatCurrency(row.phoneSales)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
@@ -434,17 +446,23 @@ export default function TransactionsPage({
                   <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.simSales)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.repairs)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.purchases)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.expenses)}
                   </td>
                   <td
-                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${row.profit >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold tracking-tight ${
+                      row.profit > 0
+                        ? "text-[var(--lv-traffic-positive)]"
+                        : row.profit < 0
+                          ? "text-[var(--lv-traffic-critical)]"
+                          : "text-[var(--lv-traffic-neutral)]"
+                    }`}
                   >
                     {formatCurrency(row.profit)}
                   </td>
@@ -455,7 +473,7 @@ export default function TransactionsPage({
                         aria-label="Edit day"
                         title="Edit day"
                         onClick={() => openEditMobile(row)}
-                        className="rounded-lg border border-white/15 p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-muted-strong)] transition hover:bg-[#ffffff07] hover:text-[var(--lv-heading)] active:scale-[0.97]"
                       >
                         <IconPencil className="h-4 w-4" />
                       </button>
@@ -465,7 +483,7 @@ export default function TransactionsPage({
                         title="Delete day"
                         disabled={deletingDate === row.date}
                         onClick={() => setPendingDeleteDate(row.date)}
-                        className="rounded-lg border border-white/15 p-2 text-rose-300 transition hover:bg-rose-500/20 hover:text-rose-200 disabled:opacity-50"
+                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-traffic-critical)] transition hover:bg-[color-mix(in_srgb,var(--lv-traffic-critical)_12%,transparent)] hover:text-[var(--lv-traffic-critical)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                       >
                         <IconTrash className="h-4 w-4" />
                       </button>
@@ -480,20 +498,20 @@ export default function TransactionsPage({
 
       {editing?.kind === "restaurant" ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-day-title"
           onClick={() => setEditing(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl"
+            className="w-full max-w-md cursor-default rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl backdrop-blur-md"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 id="edit-day-title" className="text-lg font-semibold text-white">
+            <h2 id="edit-day-title" className="text-lg font-semibold text-[var(--lv-heading)]">
               Edit daily entry ({editing.originalDate})
             </h2>
-            <form className="mt-4 space-y-4" onSubmit={handleSaveDayEdit}>
+            <form className="mt-4 flex flex-col gap-4" onSubmit={handleSaveDayEdit}>
               <Field
                 label="Entry date"
                 id="edit-r-date"
@@ -537,33 +555,20 @@ export default function TransactionsPage({
                 value={editing.expenses}
                 onChange={(value) => setEditing({ ...editing, expenses: value })}
               />
-              <div className="space-y-1.5">
-                <label htmlFor="edit-r-notes" className="text-sm text-slate-300">
-                  Notes
-                </label>
-                <textarea
-                  id="edit-r-notes"
-                  rows={3}
-                  value={editing.notes}
-                  onChange={(event) => setEditing({ ...editing, notes: event.target.value })}
-                  className="w-full rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/50"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  className="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
-                >
+              <MidnightField
+                id="edit-r-notes"
+                label="Notes"
+                rows={3}
+                value={editing.notes}
+                onChange={(event) => setEditing({ ...editing, notes: event.target.value })}
+              />
+              <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                <PressableButton type="button" variant="secondary" className="min-h-12 w-full sm:w-auto" onClick={() => setEditing(null)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:from-cyan-300 hover:to-blue-400 disabled:opacity-60"
-                >
+                </PressableButton>
+                <PressableButton type="submit" className="min-h-12 w-full sm:w-auto" disabled={saving}>
                   {saving ? "Saving…" : "Save day"}
-                </button>
+                </PressableButton>
               </div>
             </form>
           </div>
@@ -572,24 +577,24 @@ export default function TransactionsPage({
 
       {editing?.kind === "mobile_shop" ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-day-title-mobile"
           onClick={() => setEditing(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl"
+            className="w-full max-w-md cursor-default rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl backdrop-blur-md"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 id="edit-day-title-mobile" className="text-lg font-semibold text-white">
+            <h2 id="edit-day-title-mobile" className="text-lg font-semibold text-[var(--lv-heading)]">
               Edit daily entry ({editing.originalDate})
             </h2>
             <p className="mt-2 text-xs text-slate-400">
               Handset detail is preserved when metadata exists. Otherwise phone totals save as a single
               consolidated line.
             </p>
-            <form className="mt-4 space-y-4" onSubmit={handleSaveDayEdit}>
+            <form className="mt-4 flex flex-col gap-4" onSubmit={handleSaveDayEdit}>
               <Field
                 label="Entry date"
                 id="edit-m-date"
@@ -651,21 +656,13 @@ export default function TransactionsPage({
                 value={editing.expenses}
                 onChange={(value) => setEditing({ ...editing, expenses: value })}
               />
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  className="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
-                >
+              <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                <PressableButton type="button" variant="secondary" className="min-h-12 w-full sm:w-auto" onClick={() => setEditing(null)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:from-cyan-300 hover:to-blue-400 disabled:opacity-60"
-                >
+                </PressableButton>
+                <PressableButton type="submit" className="min-h-12 w-full sm:w-auto" disabled={saving}>
                   {saving ? "Saving…" : "Save day"}
-                </button>
+                </PressableButton>
               </div>
             </form>
           </div>
@@ -716,21 +713,17 @@ function Field({
   step?: number;
 }) {
   return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm text-slate-300">
-        {label}
-      </label>
-      <input
-        id={id}
-        type={type}
-        min={type === "number" ? min : undefined}
-        step={type === "number" ? step : undefined}
-        value={value}
-        required={type === "date"}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/50"
-      />
-    </div>
+    <MidnightField
+      id={id}
+      label={label}
+      type={type}
+      min={min}
+      step={step}
+      inputMode={type === "number" ? "decimal" : undefined}
+      required={type === "date"}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    />
   );
 }
 

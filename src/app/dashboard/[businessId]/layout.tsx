@@ -5,9 +5,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DashboardBottomNav } from "@/components/dashboard/dashboard-bottom-nav";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PressableButton } from "@/components/ui/pressable";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils/cn";
@@ -31,7 +33,6 @@ export default function BusinessDashboardLayout({
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState("");
   const [businessId, setBusinessId] = useState("");
-  const [mobileNav, setMobileNav] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
 
@@ -43,18 +44,18 @@ export default function BusinessDashboardLayout({
         setBusinessId(resolvedParams.businessId);
 
         const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        if (userError) {
-          router.replace("/login");
-          return;
-        }
-
-        if (!user) {
-          router.replace("/login");
-          return;
+        if (!session?.user) {
+          const {
+            data: { user },
+            error: userError,
+          } = await supabase.auth.getUser();
+          if (userError || !user) {
+            router.replace("/login");
+            return;
+          }
         }
 
         const { data, error } = await supabase
@@ -99,14 +100,19 @@ export default function BusinessDashboardLayout({
 
   if (loading) {
     return (
-      <main className="relative lv-page">
+      <main className="lv-dashboard-canvas min-h-screen">
+        <div className="lv-dashboard-mesh-bg" aria-hidden>
+          <div className="blob blob-1" />
+          <div className="blob blob-2" />
+          <div className="blob blob-3" />
+        </div>
         <section className="relative mx-auto w-full max-w-7xl px-6 py-12 md:px-10">
-          <div className="glass-panel space-y-4 rounded-2xl p-8">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-4 w-full max-w-md" />
-            <div className="grid gap-4 pt-6 lg:grid-cols-[280px_1fr]">
-              <Skeleton className="h-80 rounded-2xl" />
-              <Skeleton className="h-96 rounded-2xl" />
+          <div className="glass-panel space-y-4 rounded-[1.625rem] p-8">
+            <Skeleton className="h-6 w-48 rounded-lg" />
+            <Skeleton className="h-4 w-full max-w-md rounded-lg" />
+            <div className="grid gap-4 pt-6 md:grid-cols-[280px_1fr]">
+              <Skeleton className="h-80 rounded-[1.625rem]" />
+              <Skeleton className="h-96 rounded-[1.625rem]" />
             </div>
           </div>
         </section>
@@ -116,10 +122,15 @@ export default function BusinessDashboardLayout({
 
   if (initError && !business) {
     return (
-      <main className="relative lv-page">
+      <main className="lv-dashboard-canvas min-h-screen">
+        <div className="lv-dashboard-mesh-bg" aria-hidden>
+          <div className="blob blob-1" />
+          <div className="blob blob-2" />
+          <div className="blob blob-3" />
+        </div>
         <section className="relative mx-auto w-full max-w-7xl px-6 py-12 md:px-10">
-          <div className="glass-panel rounded-2xl p-8 text-[var(--lv-heading)]">
-            <p className="text-sm text-rose-600 dark:text-rose-300">{initError}</p>
+          <div className="glass-panel rounded-[1.625rem] p-8 text-[var(--lv-heading)]">
+            <p className="text-sm text-[var(--lv-traffic-critical)]">{initError}</p>
           </div>
         </section>
       </main>
@@ -129,70 +140,51 @@ export default function BusinessDashboardLayout({
   if (!business) return null;
 
   return (
-    <main className="relative lv-page">
+    <main className="lv-dashboard-canvas min-h-screen pb-28 md:pb-12">
+      <div className="lv-dashboard-mesh-bg" aria-hidden>
+        <div className="blob blob-1" />
+        <div className="blob blob-2" />
+        <div className="blob blob-3" />
+      </div>
       <section className="relative mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 md:px-10">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3 lg:contents">
-            <button
-              type="button"
+          <div className="min-w-0 flex-1">
+            <Link
+              href="/dashboard"
               className={cn(
-                "glass-panel inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-xl text-[var(--lv-heading)] transition hover:scale-105 lg:hidden",
+                "glass-panel inline-flex min-h-12 cursor-pointer touch-manipulation items-center rounded-[0.875rem] px-4 text-sm font-semibold text-[var(--lv-heading)] transition-[transform,box-shadow] hover:shadow-[var(--lv-bento-shadow-hover)] active:scale-[0.98]",
               )}
-              aria-expanded={mobileNav}
-              aria-controls="workspace-sidebar-nav"
-              onClick={() => setMobileNav((o) => !o)}
             >
-              <span className="sr-only">Toggle navigation</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className="size-6"
-                aria-hidden
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-              </svg>
-            </button>
-
-            <div className="min-w-0 flex-1 lg:flex-none lg:min-w-auto">
-              <Link
-                href="/dashboard"
-                className="inline-flex rounded-xl border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] px-4 py-2 text-sm font-medium text-[var(--lv-heading)] transition hover:scale-[1.02] hover:bg-[var(--lv-surface-muted)] dark:hover:bg-white/10"
-              >
-                Back to businesses
-              </Link>
-            </div>
+              Back to businesses
+            </Link>
           </div>
 
-          <button
+          <PressableButton
             type="button"
-            className="rounded-xl border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] px-4 py-2 text-sm font-medium text-[var(--lv-heading)] transition hover:scale-[1.02] hover:bg-[var(--lv-surface-muted)] dark:hover:bg-white/10"
+            variant="secondary"
+            className="min-h-12"
             onClick={() => setSignOutOpen(true)}
           >
             Sign out
-          </button>
+          </PressableButton>
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          <DashboardSidebar
-            businessId={businessId}
-            businessName={business.name}
-            mobileOpen={mobileNav}
-            onCloseMobile={() => setMobileNav(false)}
-          />
+        <div className="grid gap-6 md:grid-cols-[280px_1fr]">
+          <DashboardSidebar businessId={businessId} businessName={business.name} />
 
           <motion.div
             key={pathname}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ type: "spring", stiffness: 360, damping: 30 }}
+            className="min-w-0"
           >
             {children}
           </motion.div>
         </div>
       </section>
+
+      <DashboardBottomNav businessId={businessId} />
 
       <ConfirmDialog
         open={signOutOpen}

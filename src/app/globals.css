@@ -1,43 +1,38 @@
 @import "tailwindcss";
 
-/* Light (default document; dark class on html from next-themes) */
+/* LedgerView — permanent Midnight dark */
 :root {
-  --background: #f9fafb;
-  --foreground: #0f172a;
-  --lv-heading: #0f172a;
-  --lv-muted: #64748b;
-  --lv-muted-strong: #475569;
-  --lv-border: rgba(15, 23, 42, 0.09);
-  --lv-glass: rgba(255, 255, 255, 0.78);
-  --lv-glass-strong: rgba(255, 255, 255, 0.92);
-  --lv-surface-soft: rgba(255, 255, 255, 0.72);
-  --lv-surface-muted: rgba(241, 245, 249, 0.95);
-  --lv-skeleton: #e2e8f0;
-  --lv-skeleton-dark: #e2e8f0;
-  --lv-accent: #2563eb;
-  --lv-accent-soft: rgba(37, 99, 235, 0.12);
-  --lv-glow-tl: rgba(37, 99, 235, 0.15);
-  --lv-glow-br: rgba(14, 165, 233, 0.12);
-}
-
-.dark {
   color-scheme: dark;
-  --background: #0a0f1a;
-  --foreground: #f1f5f9;
-  --lv-heading: #f8fafc;
-  --lv-muted: #94a3b8;
-  --lv-muted-strong: #cbd5e1;
-  --lv-border: rgba(255, 255, 255, 0.12);
-  --lv-glass: rgba(255, 255, 255, 0.06);
-  --lv-glass-strong: rgba(15, 23, 42, 0.55);
-  --lv-surface-soft: rgba(255, 255, 255, 0.05);
-  --lv-surface-muted: rgba(255, 255, 255, 0.09);
-  --lv-skeleton: rgba(255, 255, 255, 0.07);
-  --lv-skeleton-dark: rgba(255, 255, 255, 0.06);
-  --lv-accent: #38bdf8;
-  --lv-accent-soft: rgba(56, 189, 248, 0.12);
-  --lv-glow-tl: rgba(37, 99, 235, 0.35);
-  --lv-glow-br: rgba(99, 102, 241, 0.25);
+  --background: #0b0e14;
+  --lv-card: #151921;
+  --foreground: #e8eef7;
+  --lv-heading: #f4f8ff;
+  --lv-muted: #8b93a7;
+  --lv-muted-strong: #b9c1d6;
+  --lv-border: #ffffff14;
+  --lv-glass: rgba(21, 25, 33, 0.55);
+  --lv-glass-strong: rgba(21, 25, 33, 0.9);
+  --lv-glass-edge: #ffffff12;
+  --lv-liquid-fill: color-mix(in srgb, var(--lv-card) 94%, transparent);
+  --lv-liquid-fill-hover: color-mix(in srgb, var(--lv-card) 99%, transparent);
+  --lv-bento-shadow:
+    0 28px 80px -36px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --lv-bento-shadow-hover:
+    0 40px 100px -40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --lv-surface-soft: rgba(255, 255, 255, 0.04);
+  --lv-surface-muted: rgba(255, 255, 255, 0.07);
+  --lv-skeleton: rgba(255, 255, 255, 0.06);
+  --lv-skeleton-dark: rgba(255, 255, 255, 0.05);
+  --lv-accent: #5ecfff;
+  --lv-accent-soft: rgba(94, 207, 255, 0.15);
+  --lv-glow-tl: rgba(94, 207, 255, 0.16);
+  --lv-glow-br: rgba(99, 102, 241, 0.22);
+  --lv-spark-positive: #34d399;
+  --lv-spark-neutral: #fcd34d;
+  --lv-spark-critical: #f87171;
+  --lv-traffic-positive: #6ee7b7;
+  --lv-traffic-neutral: #fcd34d;
+  --lv-traffic-critical: #fca5a5;
 }
 
 @theme inline {
@@ -47,58 +42,190 @@
   --font-mono: var(--font-geist-mono);
 }
 
+@keyframes lv-mesh-a {
+  0%,
+  100% {
+    transform: translate(0%, 0%) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate(4%, -3%) scale(1.08);
+    opacity: 0.62;
+  }
+}
+
+@keyframes lv-mesh-b {
+  0%,
+  100% {
+    transform: translate(0%, 0%) scale(1.02);
+    opacity: 0.38;
+  }
+  50% {
+    transform: translate(-5%, 4%) scale(1.06);
+    opacity: 0.55;
+  }
+}
+
+@keyframes lv-mesh-c {
+  0%,
+  100% {
+    transform: translate(-2%, 2%) scale(1);
+    opacity: 0.32;
+  }
+  50% {
+    transform: translate(3%, -2%) scale(1.12);
+    opacity: 0.48;
+  }
+}
+
 @layer utilities {
-  .lv-page {
-    @apply min-h-screen text-[var(--foreground)] transition-colors duration-200;
+  /* Organic mesh behind dashboard glass */
+  .lv-dashboard-canvas {
+    @apply relative isolate overflow-x-hidden text-[var(--foreground)];
     background-color: var(--background);
-    background-image: radial-gradient(ellipse 120% 80% at 50% -25%, var(--lv-glow-tl), transparent 52%),
-      radial-gradient(ellipse 70% 50% at 100% 100%, var(--lv-glow-br), transparent 45%);
   }
 
-  .dark .lv-page {
-    background-image: radial-gradient(ellipse 100% 80% at 50% -20%, rgba(56, 189, 248, 0.14), transparent 50%),
-      radial-gradient(ellipse 65% 45% at 100% 0%, rgba(99, 102, 241, 0.12), transparent 42%),
-      radial-gradient(circle at 0% 100%, rgba(14, 165, 233, 0.08), transparent 35%);
+  .lv-dashboard-canvas::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.95;
+    background: radial-gradient(ellipse 100% 90% at 12% -8%, rgba(56, 189, 248, 0.16), transparent 58%),
+      radial-gradient(ellipse 85% 70% at 88% 14%, rgba(99, 102, 241, 0.16), transparent 55%),
+      radial-gradient(circle at 50% 100%, rgba(14, 165, 233, 0.1), transparent 42%);
   }
 
+  .lv-dashboard-mesh-bg {
+    position: absolute;
+    inset: -20% -10%;
+    z-index: 0;
+    pointer-events: none;
+    filter: blur(0px);
+  }
+
+  .lv-dashboard-mesh-bg .blob {
+    position: absolute;
+    border-radius: 50%;
+    mix-blend-mode: screen;
+    filter: blur(70px);
+  }
+
+  .lv-dashboard-mesh-bg .blob-1 {
+    width: min(58vw, 520px);
+    height: min(58vw, 520px);
+    top: -8%;
+    left: -6%;
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.35), transparent 68%);
+    animation: lv-mesh-a 22s ease-in-out infinite;
+  }
+
+  .lv-dashboard-mesh-bg .blob-2 {
+    width: min(48vw, 440px);
+    height: min(48vw, 440px);
+    top: 18%;
+    right: -4%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.32), transparent 70%);
+    animation: lv-mesh-b 26s ease-in-out infinite;
+  }
+
+  .lv-dashboard-mesh-bg .blob-3 {
+    width: min(62vw, 560px);
+    height: min(62vw, 560px);
+    bottom: -18%;
+    left: 22%;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.18), transparent 72%);
+    animation: lv-mesh-c 30s ease-in-out infinite;
+  }
+
+  .lv-dashboard-canvas > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .lv-page {
+    @apply min-h-screen text-[var(--foreground)];
+    background-color: var(--background);
+    background-image:
+      radial-gradient(ellipse 100% 85% at 50% -18%, rgba(94, 207, 255, 0.09), transparent 52%),
+      radial-gradient(ellipse 72% 50% at 100% -5%, rgba(99, 102, 241, 0.1), transparent 48%);
+  }
+
+  .lv-tabular-mono {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+
+  /* Legacy panel — upgraded to liquid glass */
   .glass-panel {
-    @apply backdrop-blur-xl;
-    border: 1px solid var(--lv-border);
-    background: var(--lv-glass);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  }
-
-  .dark .glass-panel {
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    border: 1px solid #ffffff10;
+    background: color-mix(in srgb, var(--lv-card) 88%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: var(--lv-bento-shadow);
   }
 
   .glass-panel-strong {
-    @apply backdrop-blur-xl;
-    border: 1px solid var(--lv-border);
+    border: 1px solid color-mix(in srgb, var(--lv-glass-edge) 65%, transparent);
     background: var(--lv-glass-strong);
+    backdrop-filter: blur(26px) saturate(190%);
+    -webkit-backdrop-filter: blur(26px) saturate(190%);
+    box-shadow: var(--lv-bento-shadow);
+  }
+
+  .lv-liquid-sidebar {
+    border: 1px solid color-mix(in srgb, var(--lv-glass-edge) 50%, transparent);
+    background: var(--lv-liquid-fill);
+    backdrop-filter: blur(28px) saturate(200%);
+    -webkit-backdrop-filter: blur(28px) saturate(200%);
+    box-shadow: var(--lv-bento-shadow);
   }
 
   .lv-input {
-    @apply w-full rounded-xl border px-4 py-3 text-sm outline-none transition placeholder:opacity-50;
-    border-color: var(--lv-border);
-    background: var(--lv-surface-muted);
+    @apply min-h-12 w-full rounded-xl px-4 py-[0.6875rem] text-[15px] outline-none transition placeholder:text-[var(--lv-muted)];
+    cursor: text;
+    border: 1px solid #ffffff10;
+    background: color-mix(in srgb, var(--lv-card) 80%, transparent);
     color: var(--lv-heading);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(12px);
   }
 
   .lv-input:focus {
-    border-color: color-mix(in srgb, var(--lv-accent) 55%, var(--lv-border));
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lv-accent) 18%, transparent);
+    border-color: color-mix(in srgb, var(--lv-accent) 45%, #ffffff18);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--lv-accent) 45%, transparent),
+      0 0 28px -8px color-mix(in srgb, var(--lv-accent) 35%, transparent);
+  }
+}
+
+@layer base {
+  a[href],
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  summary {
+    cursor: pointer;
   }
 
-  .dark .lv-input {
-    background: rgba(15, 23, 42, 0.65);
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  input:not([readonly]),
+  textarea:not([readonly]),
+  select {
+    cursor: text;
   }
 }
 
 body {
   min-height: 100%;
+  background-color: var(--background);
 }
 
 html {
-  color-scheme: light dark;
+  color-scheme: dark;
 }

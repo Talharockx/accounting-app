@@ -20,6 +20,9 @@ import {
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { getTodayLocalISO } from "@/lib/utils/date-range";
 import { supabase } from "@/lib/supabaseClient";
+import { GlassFormCard } from "@/components/ui/glass-form-card";
+import { MidnightField } from "@/components/ui/midnight-field";
+import { PressableButton } from "@/components/ui/pressable";
 
 type BusinessType = "restaurant" | "mobile_shop";
 
@@ -283,7 +286,8 @@ export default function DailyEntryPage({
 
   useEffect(() => {
     if (!businessId || loading) return;
-    void loadDay(businessId, entryDate, businessType, true);
+    const id = window.setTimeout(() => void loadDay(businessId, entryDate, businessType, true), 0);
+    return () => window.clearTimeout(id);
   }, [businessId, entryDate, businessType, loadDay, loading]);
 
   const addPhoneRow = () =>
@@ -412,11 +416,9 @@ export default function DailyEntryPage({
     setSaving(false);
   };
 
-  const numberInputClass = "lv-input";
-
   return (
     <div className="space-y-6">
-      <section className="glass-panel rounded-2xl p-6 shadow-lg shadow-slate-900/8 dark:shadow-black/35">
+      <section className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-[var(--lv-heading)]">
@@ -428,11 +430,9 @@ export default function DailyEntryPage({
             </p>
           </div>
           {summary ? (
-            <div className="rounded-xl border border-blue-400/35 bg-blue-500/10 px-4 py-3 text-right dark:border-cyan-400/35 dark:bg-cyan-500/10">
-              <p className="text-xs uppercase tracking-wide text-blue-800 dark:text-cyan-100">
-                Daily profit
-              </p>
-              <p className="text-3xl font-semibold text-emerald-600 dark:text-emerald-300">
+            <div className="rounded-xl border border-[color-mix(in_srgb,var(--lv-accent)_32%,transparent)] bg-[color-mix(in_srgb,var(--lv-accent)_10%,transparent)] px-4 py-3 text-right backdrop-blur-sm">
+              <p className="text-xs uppercase tracking-wide text-[var(--lv-accent)]">Daily profit</p>
+              <p className="text-3xl font-semibold text-[var(--lv-traffic-positive)]">
                 {formatCurrency(summary.headline)}
               </p>
             </div>
@@ -443,7 +443,7 @@ export default function DailyEntryPage({
             {Object.entries(summary.details).map(([label, value]) => (
               <div
                 key={label}
-                className="rounded-xl border border-[var(--lv-border)] bg-[var(--lv-surface-muted)] px-4 py-3 dark:bg-slate-900/55"
+                className="rounded-xl border border-[#ffffff10] bg-[color-mix(in_srgb,var(--lv-card)_70%,transparent)] px-4 py-3 backdrop-blur-sm"
               >
                 <dt className="text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">{label}</dt>
                 <dd className="mt-1 text-lg font-semibold text-[var(--lv-heading)]">{value}</dd>
@@ -455,42 +455,36 @@ export default function DailyEntryPage({
         )}
       </section>
 
-      <section className="glass-panel rounded-2xl p-6 shadow-lg shadow-slate-900/8 dark:shadow-black/35">
+      <GlassFormCard>
         <h1 className="text-2xl font-semibold text-[var(--lv-heading)]">
           Daily entry · {businessType === "restaurant" ? "Restaurant" : "Mobile shop"}
         </h1>
         <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-          Amounts cannot be negative. Saving replaces Supabase rows for this business/date, then inserts
-          the new bundle.
+          Amounts cannot be negative. Saving replaces Supabase rows for this business/date, then inserts the new bundle.
         </p>
 
         {loading ? <p className="mt-6 text-sm text-[var(--lv-muted-strong)]">Loading business…</p> : null}
         {error ? (
-          <p className="mt-4 text-sm text-rose-600 dark:text-rose-300" role="alert">
+          <p className="mt-4 text-sm text-[var(--lv-traffic-critical)]" role="alert">
             {error}
           </p>
         ) : null}
 
         {!loading ? (
-          <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <label htmlFor="entryDate" className="text-sm font-medium text-[var(--lv-heading)]">
-                Entry date
-              </label>
-              <input
-                id="entryDate"
-                type="date"
-                value={entryDate}
-                onChange={(event) => {
-                  setEntryDate(event.target.value);
-                }}
-                className="w-full max-w-xs rounded-xl border border-white/15 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/70"
-                required
-              />
-            </div>
+          <form className="mt-6 flex flex-col gap-6" onSubmit={handleSubmit}>
+            <MidnightField
+              id="entryDate"
+              label="Entry date"
+              type="date"
+              value={entryDate}
+              onChange={(event) => {
+                setEntryDate(event.target.value);
+              }}
+              required
+            />
 
             {businessType === "restaurant" ? (
-              <div className="space-y-4">
+              <div className="flex flex-col gap-4">
                 {[
                   { id: "cash", label: "Cash sales", value: restCash, setter: setRestCash },
                   { id: "bank", label: "Bank sales", value: restBank, setter: setRestBank },
@@ -502,133 +496,103 @@ export default function DailyEntryPage({
                   },
                   { id: "exp", label: "Expenses", value: restExpenses, setter: setRestExpenses },
                 ].map((field) => (
-                  <div key={field.id} className="space-y-2">
-                    <label htmlFor={field.id} className="text-sm font-medium text-slate-200">
-                      {field.label}
-                    </label>
-                    <input
-                      id={field.id}
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      value={field.value}
-                      onChange={(event) => clampInput(event.target.value, field.setter)}
-                      className={numberInputClass}
-                    />
-                  </div>
-                ))}
-                <div className="space-y-2">
-                  <label htmlFor="notes" className="text-sm font-medium text-slate-200">
-                    Notes
-                  </label>
-                  <textarea
-                    id="notes"
-                    rows={4}
-                    value={restNotes}
-                    onChange={(event) => setRestNotes(event.target.value)}
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/70"
+                  <MidnightField
+                    key={field.id}
+                    id={field.id}
+                    label={field.label}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={field.value}
+                    onChange={(event) => clampInput(event.target.value, field.setter)}
                   />
-                </div>
+                ))}
+                <MidnightField id="notes" label="Notes" rows={4} value={restNotes} onChange={(event) => setRestNotes(event.target.value)} />
               </div>
             ) : (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-white">Mobile phone sales</h3>
-                    <p className="text-xs text-slate-400">Add one row per handset with metadata-backed profit tracking.</p>
+                    <h3 className="text-lg font-semibold text-[var(--lv-heading)]">Mobile phone sales</h3>
+                    <p className="text-xs text-[var(--lv-muted-strong)]">
+                      Add one row per handset with metadata-backed profit tracking.
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addPhoneRow}
-                    className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-white/10"
-                  >
+                  <PressableButton type="button" variant="secondary" className="min-h-12 w-full shrink-0 sm:w-auto" onClick={addPhoneRow}>
                     Add phone
-                  </button>
+                  </PressableButton>
                 </div>
 
                 {phones.map((phone, index) => (
-                  <div key={`phone-${index}`} className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
-                    <div className="mb-4 flex items-center justify-between">
-                      <p className="text-xs uppercase tracking-wide text-slate-400">Phone {index + 1}</p>
-                      <button
+                  <div
+                    key={`phone-${index}`}
+                    className="rounded-2xl border border-[#ffffff10] bg-[color-mix(in_srgb,var(--lv-card)_55%,transparent)] p-4 backdrop-blur-md"
+                  >
+                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">Phone {index + 1}</p>
+                      <PressableButton
                         type="button"
+                        variant="ghost"
+                        className="min-h-12 w-full text-[var(--lv-traffic-critical)] sm:w-auto"
                         disabled={phones.length === 1}
                         onClick={() => removePhoneRow(index)}
-                        className="text-xs font-semibold text-rose-300 hover:text-rose-200 disabled:opacity-40"
                       >
                         Remove
-                      </button>
+                      </PressableButton>
                     </div>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="space-y-2">
-                        <label className="text-sm text-slate-200">Item name</label>
-                        <input
-                          type="text"
-                          value={phone.itemName}
-                          onChange={(event) =>
-                            updatePhoneRow(index, "itemName", event.target.value)
-                          }
-                          className={numberInputClass}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm text-slate-200">Selling price</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={phone.sellingPrice}
-                          onChange={(event) =>
-                            updatePhoneRow(
-                              index,
-                              "sellingPrice",
-                              String(Math.max(0, parseNonNegative(event.target.value))),
-                            )
-                          }
-                          className={numberInputClass}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm text-slate-200">Profit (per item)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={phone.profit}
-                          onChange={(event) =>
-                            updatePhoneRow(
-                              index,
-                              "profit",
-                              String(Math.max(0, parseNonNegative(event.target.value))),
-                            )
-                          }
-                          className={numberInputClass}
-                        />
-                      </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <MidnightField
+                        id={`phone-${index}-name`}
+                        label="Item name"
+                        type="text"
+                        value={phone.itemName}
+                        onChange={(event) => updatePhoneRow(index, "itemName", event.target.value)}
+                      />
+                      <MidnightField
+                        id={`phone-${index}-price`}
+                        label="Selling price"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        value={phone.sellingPrice}
+                        onChange={(event) =>
+                          updatePhoneRow(index, "sellingPrice", String(Math.max(0, parseNonNegative(event.target.value))))
+                        }
+                      />
+                      <MidnightField
+                        id={`phone-${index}-profit`}
+                        label="Profit (per item)"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        value={phone.profit}
+                        onChange={(event) =>
+                          updatePhoneRow(index, "profit", String(Math.max(0, parseNonNegative(event.target.value))))
+                        }
+                      />
                     </div>
                   </div>
                 ))}
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {[
                     { id: "vod", label: "SIM · Vodafone total", state: simVodafone, setter: setSimVodafone },
                     { id: "wnd", label: "SIM · Wind total", state: simWind, setter: setSimWind },
                   ].map((field) => (
-                    <div key={field.id} className="space-y-2">
-                      <label htmlFor={field.id} className="text-sm font-medium text-slate-200">
-                        {field.label}
-                      </label>
-                      <input
-                        id={field.id}
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={field.state}
-                        onChange={(event) => clampInput(event.target.value, field.setter)}
-                        className={numberInputClass}
-                      />
-                    </div>
+                    <MidnightField
+                      key={field.id}
+                      id={field.id}
+                      label={field.label}
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={field.state}
+                      onChange={(event) => clampInput(event.target.value, field.setter)}
+                    />
                   ))}
                 </div>
 
@@ -652,34 +616,27 @@ export default function DailyEntryPage({
                     setter: setMobileExpenses,
                   },
                 ].map((field) => (
-                  <div key={field.id} className="space-y-2">
-                    <label htmlFor={field.id} className="text-sm font-medium text-slate-200">
-                      {field.label}
-                    </label>
-                    <input
-                      id={field.id}
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={field.value}
-                      onChange={(event) => clampInput(event.target.value, field.setter)}
-                      className={numberInputClass}
-                    />
-                  </div>
+                  <MidnightField
+                    key={field.id}
+                    id={field.id}
+                    label={field.label}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={field.value}
+                    onChange={(event) => clampInput(event.target.value, field.setter)}
+                  />
                 ))}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:from-cyan-300 hover:to-blue-400 disabled:cursor-not-allowed disabled:opacity-70"
-            >
+            <PressableButton type="submit" className="min-h-12 w-full sm:w-auto sm:self-start" disabled={saving}>
               {saving ? "Saving..." : "Save entry"}
-            </button>
+            </PressableButton>
           </form>
         ) : null}
-      </section>
+      </GlassFormCard>
     </div>
   );
 }

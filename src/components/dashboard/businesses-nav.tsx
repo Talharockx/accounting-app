@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { motion } from "framer-motion";
+import { LedgerLogoNavLink } from "@/components/layout/ledger-logo-link";
+import { PressableButton } from "@/components/ui/pressable";
+import { cn } from "@/lib/utils/cn";
 
 type BusinessesNavProps = {
   onAddRestaurant: () => void;
@@ -10,61 +13,51 @@ type BusinessesNavProps = {
 };
 
 export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onSignOutIntent }: BusinessesNavProps) {
-  const pill =
-    "rounded-lg px-3 py-2 text-sm font-medium transition hover:scale-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lv-accent)]/50";
+  const pillIdle =
+    "inline-flex min-h-12 shrink-0 cursor-pointer touch-manipulation items-center rounded-[0.875rem] border border-[#ffffff10] px-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--lv-muted-strong)] transition-[transform,opacity] hover:border-[#ffffff24] hover:text-[var(--lv-heading)] active:scale-[0.98]";
+  const pillAccent =
+    "inline-flex min-h-12 shrink-0 cursor-pointer touch-manipulation items-center rounded-[0.875rem] px-4 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--lv-heading)] ring-1 ring-[#ffffff14] transition-[transform,opacity] active:scale-[0.98] bg-[color-mix(in_srgb,var(--lv-accent)_12%,transparent)]";
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--lv-border)] bg-[var(--lv-glass)] backdrop-blur-md dark:bg-[#0c122080]">
+    <motion.header
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 380, damping: 32 }}
+      className="sticky top-0 z-30 border-b border-[#ffffff10] bg-[#0b0e14]/88 shadow-[var(--lv-bento-shadow)] backdrop-blur-md"
+      style={{
+        WebkitBackdropFilter: "blur(16px)",
+        backdropFilter: "blur(16px)",
+      }}
+    >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 md:gap-4 md:px-10 md:py-4">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 md:gap-6">
-          <Link
-            href="/"
-            className="shrink-0 text-base font-semibold tracking-tight text-[var(--lv-heading)] md:text-lg"
-          >
-            Ledger<span className="text-[var(--lv-accent)]">View</span>
-          </Link>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 md:gap-5">
+          <LedgerLogoNavLink />
 
-          <nav aria-label="Main" className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <Link
-              href="/dashboard"
-              className={`${pill} bg-[var(--lv-accent-soft)] text-[var(--lv-heading)] ring-1 ring-[var(--lv-border)]`}
-            >
+          <nav aria-label="Main" className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <Link href="/dashboard" className={pillAccent}>
               My businesses
             </Link>
-            <button
-              type="button"
-              onClick={onAddRestaurant}
-              className={`${pill} border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] text-[var(--lv-muted-strong)] hover:bg-[var(--lv-surface-muted)] hover:text-[var(--lv-heading)]`}
-            >
+            <button type="button" onClick={onAddRestaurant} className={pillIdle}>
               Add restaurant
             </button>
-            <button
-              type="button"
-              onClick={onAddMobileShop}
-              className={`${pill} border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] text-[var(--lv-muted-strong)] hover:bg-[var(--lv-surface-muted)] hover:text-[var(--lv-heading)]`}
-            >
+            <button type="button" onClick={onAddMobileShop} className={pillIdle}>
               Add mobile shop
             </button>
           </nav>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <ThemeToggle />
           <Link
             href="/"
-            className={`${pill} hidden border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] text-[var(--lv-muted-strong)] hover:bg-[var(--lv-surface-muted)] hover:text-[var(--lv-heading)] sm:inline-flex`}
+            className={cn(pillIdle, "hidden px-4 sm:inline-flex", "justify-center")}
           >
             Home
           </Link>
-          <button
-            type="button"
-            onClick={onSignOutIntent}
-            className={`${pill} border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] text-[var(--lv-heading)] hover:bg-[var(--lv-surface-muted)]`}
-          >
+          <PressableButton type="button" variant="secondary" className="min-h-12 !px-4 text-xs uppercase tracking-[0.12em]" onClick={onSignOutIntent}>
             Sign out
-          </button>
+          </PressableButton>
         </div>
       </div>
-    </header>
+    </motion.header>
   );
 }

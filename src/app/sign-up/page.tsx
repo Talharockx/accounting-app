@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { GlassFormCard } from "@/components/ui/glass-form-card";
+import { MidnightField } from "@/components/ui/midnight-field";
+import { PressableButton } from "@/components/ui/pressable";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function SignUpPage() {
@@ -47,71 +50,44 @@ export default function SignUpPage() {
       title="Create Your Account"
       subtitle="Start tracking sales, expenses, and repairs for your restaurant or mobile shop."
     >
-      <form className="space-y-5" onSubmit={handleSignUp}>
-        <div className="space-y-2">
-          <label htmlFor="businessName" className="text-sm font-medium text-slate-200">
-            Business Name
-          </label>
-          <input
-            id="businessName"
-            type="text"
-            value={businessName}
-            onChange={(event) => setBusinessName(event.target.value)}
-            className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/70"
-            placeholder="Al Noor Mobile Shop"
-            required
-          />
-        </div>
+      <GlassFormCard>
+          <form className="flex flex-col gap-5" onSubmit={handleSignUp}>
+            <MidnightField
+              id="businessName"
+              label="Business name"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              required
+            />
 
-        <div className="space-y-2">
-          <label htmlFor="email" className="text-sm font-medium text-slate-200">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/70"
-            placeholder="owner@business.com"
-            required
-          />
-        </div>
+            <MidnightField id="email" label="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
 
-        <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-medium text-slate-200">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/70"
-            placeholder="At least 6 characters"
-            minLength={6}
-            required
-          />
-        </div>
+            <MidnightField
+              id="password"
+              label="Password (min 6 characters)"
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={6}
+              required
+            />
 
-        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-        {success ? <p className="text-sm text-emerald-300">{success}</p> : null}
+            {error ? <p className="text-sm font-medium text-[var(--lv-traffic-critical)]">{error}</p> : null}
+            {success ? <p className="text-sm font-medium text-[var(--lv-traffic-positive)]">{success}</p> : null}
 
-        <button
-          type="submit"
-          className="w-full rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/25 transition hover:from-cyan-300 hover:to-blue-400 disabled:cursor-not-allowed disabled:opacity-70"
-          disabled={loading}
-        >
-          {loading ? "Creating account..." : "Sign Up"}
-        </button>
+            <PressableButton type="submit" className="min-h-12 w-full" disabled={loading}>
+              {loading ? "Creating account…" : "Sign up"}
+            </PressableButton>
 
-        <p className="text-center text-sm text-slate-300">
-          Already have an account?{" "}
-          <Link href="/login" className="font-medium text-cyan-300 hover:text-cyan-200">
-            Login
-          </Link>
-        </p>
-      </form>
+            <p className="text-center text-sm text-[var(--lv-muted-strong)]">
+              Already have an account?{" "}
+              <Link href="/login" className="cursor-pointer font-semibold text-[var(--lv-accent)] hover:underline">
+                Login
+              </Link>
+            </p>
+          </form>
+      </GlassFormCard>
     </AuthShell>
   );
 }

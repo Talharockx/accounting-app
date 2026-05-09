@@ -83,17 +83,20 @@ export default function SettingsPage({
 
   if (loading) {
     return (
-      <section className="glass-panel rounded-2xl p-8">
-        <Skeleton className="h-9 w-40" />
-        <Skeleton className="mt-4 h-24 w-full max-w-xl" />
+      <section className="glass-panel rounded-[1.625rem] p-8">
+        <Skeleton className="h-10 w-44 rounded-xl" />
+        <Skeleton className="mt-4 h-28 w-full max-w-xl rounded-[1.25rem]" />
       </section>
     );
   }
 
   return (
     <section className="space-y-6">
-      <div className="glass-panel rounded-2xl p-6 shadow-lg shadow-slate-900/10 dark:shadow-black/35">
-        <h1 className="text-2xl font-semibold text-[var(--lv-heading)]">Settings</h1>
+      <div className="glass-panel rounded-[1.625rem] p-7">
+        <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
+          Control plane
+        </p>
+        <h1 className="mt-3 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">Settings</h1>
         <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
           {business
             ? `Managing “${business.name}”. Dangerous actions stay below — delete only when you intend to wipe this workspace from LedgerView.`
@@ -102,14 +105,17 @@ export default function SettingsPage({
       </div>
 
       {error ? (
-        <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200" role="alert">
+        <p
+          className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-traffic-critical)_42%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_10%,transparent)] px-4 py-3 text-sm font-medium text-[var(--lv-traffic-critical)]"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
 
       {business ? (
-        <div className="rounded-2xl border border-rose-400/35 bg-rose-500/10 p-6 dark:bg-rose-950/35">
-          <h2 className="text-lg font-semibold text-rose-900 dark:text-rose-200">Danger zone</h2>
+        <div className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-traffic-critical)_42%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_08%,transparent)] p-6 backdrop-blur-xl">
+          <h2 className="text-lg font-bold tracking-tight text-[var(--lv-traffic-critical)]">Danger zone</h2>
           <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
             Deleting removes this location. If PostgreSQL cascading deletes transactions, related daily
             entries go with it; otherwise Supabase may block the delete until data is cleared.
@@ -118,7 +124,7 @@ export default function SettingsPage({
             type="button"
             disabled={deleting || !businessId}
             onClick={() => setDeleteConfirm(true)}
-            className="mt-4 rounded-xl border border-rose-500/50 bg-rose-600/90 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-500 hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+            className="mt-4 rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-traffic-critical)_55%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_82%,#0f172a)] px-5 py-3 text-sm font-semibold text-white shadow-[var(--lv-bento-shadow)] transition-[transform,box-shadow] hover:scale-[1.02] hover:shadow-[var(--lv-bento-shadow-hover)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
           >
             Delete “{business.name}”
           </button>

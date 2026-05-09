@@ -1,19 +1,29 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   mobileProfitFromTransactions,
   restaurantProfitFromTransactions,
 } from "@/lib/dashboard/daily-entry";
 import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
+import {
+  mobileSparkSeries,
+  restaurantSparkSeries,
+  rollingDaysISOIncludingToday,
+  seriesFromMobile,
+  seriesFromRestaurant,
+  sparkTrendTone,
+} from "@/lib/dashboard/sparkline-series";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import { getTodayLocalISO, getWeekToDateRangeLocal } from "@/lib/utils/date-range";
 import { supabase } from "@/lib/supabaseClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BentoCell } from "@/components/ui/bento-cell";
+import { Sparkline, type TrafficTone } from "@/components/ui/sparkline";
 import { cn } from "@/lib/utils/cn";
 
 type Business = {
@@ -21,8 +31,6 @@ type Business = {
   name: string;
   business_type: "restaurant" | "mobile_shop";
 };
-
-type TransactionRow = TransactionWithMeta;
 
 type PeriodFilter = "today" | "week" | "day";
 
@@ -34,11 +42,16 @@ export default function BusinessOverviewPage({
   const [business, setBusiness] = useState<Business | null>(null);
   const [businessLoading, setBusinessLoading] = useState(true);
   const [businessId, setBusinessId] = useState("");
-  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [transactions, setTransactions] = useState<TransactionWithMeta[]>([]);
   const [period, setPeriod] = useState<PeriodFilter>("today");
   const [selectedDay, setSelectedDay] = useState(() => getTodayLocalISO());
   const [txLoading, setTxLoading] = useState(true);
   const [txError, setTxError] = useState("");
+
+  const [sparkTransactions, setSparkTransactions] = useState<TransactionWithMeta[]>([]);
+  const [sparkLoading, setSparkLoading] = useState(false);
+
+  const sparkDays = useMemo(() => rollingDaysISOIncludingToday(7), []);
 
   const loadTransactions = useCallback(async (id: string, p: PeriodFilter, dayISO: string) => {
     setTxLoading(true);
@@ -87,6 +100,40 @@ export default function BusinessOverviewPage({
     setTxLoading(false);
   }, []);
 
+  const loadSparkWindow = useCallback(async (id: string) => {
+    setSparkLoading(true);
+    const start = sparkDays[0]!;
+    const end = sparkDays[sparkDays.length - 1]!;
+    try {
+      const result = await selectWithMetadataColumnFallback(
+        async () =>
+          await supabase
+            .from("transactions")
+            .select("amount, transaction_type, description, transaction_date, metadata")
+            .eq("business_id", id)
+            .gte("transaction_date", start)
+            .lte("transaction_date", end)
+            .order("transaction_date", { ascending: true }),
+        async () =>
+          await supabase
+            .from("transactions")
+            .select("amount, transaction_type, description, transaction_date")
+            .eq("business_id", id)
+            .gte("transaction_date", start)
+            .lte("transaction_date", end)
+            .order("transaction_date", { ascending: true }),
+      );
+      if (result.error) {
+        setSparkTransactions([]);
+      } else {
+        setSparkTransactions(mapTransactionRows(result.data ?? []));
+      }
+    } catch {
+      setSparkTransactions([]);
+    }
+    setSparkLoading(false);
+  }, [sparkDays]);
+
   useEffect(() => {
     const loadBusiness = async () => {
       try {
@@ -116,7 +163,14 @@ export default function BusinessOverviewPage({
 
   useEffect(() => {
     if (!businessId) return;
-    void loadTransactions(businessId, period, selectedDay);
+    const id = window.setTimeout(() => void loadSparkWindow(businessId), 0);
+    return () => window.clearTimeout(id);
+  }, [businessId, loadSparkWindow]);
+
+  useEffect(() => {
+    if (!businessId) return;
+    const id = window.setTimeout(() => void loadTransactions(businessId, period, selectedDay), 0);
+    return () => window.clearTimeout(id);
   }, [businessId, period, selectedDay, loadTransactions]);
 
   const periodLabel = (() => {
@@ -128,14 +182,36 @@ export default function BusinessOverviewPage({
     return `Selected day (${selectedDay})`;
   })();
 
+  const pill =
+    "rounded-xl px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--lv-accent)_50%,transparent)]";
+  const pillActive = cn(
+    pill,
+    "bg-[var(--lv-accent-soft)] text-[var(--lv-heading)] ring-1 ring-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)]",
+  );
+  const pillIdle = cn(
+    pill,
+    "border border-[color-mix(in_srgb,var(--lv-glass-edge)_55%,transparent)] bg-[var(--lv-liquid-fill)] text-[var(--lv-muted-strong)] backdrop-blur-md hover:border-[color-mix(in_srgb,var(--lv-glass-edge)_75%,transparent)] hover:text-[var(--lv-heading)]",
+  );
+
+  const restaurantSlices = useMemo(() => restaurantSparkSeries(sparkTransactions, sparkDays), [sparkTransactions, sparkDays]);
+  const mobileSlices = useMemo(() => mobileSparkSeries(sparkTransactions, sparkDays), [sparkTransactions, sparkDays]);
+
+  function toneProfitNumeric(current: number): TrafficTone {
+    if (current < 0) return "critical";
+    if (current === 0) return "neutral";
+    return "positive";
+  }
+
   if (businessLoading) {
     return (
-      <div className="glass-panel rounded-2xl p-8">
-        <Skeleton className="mb-6 h-7 w-48" />
-        <div className="grid gap-4 md:grid-cols-3">
-          <Skeleton className="h-36 rounded-2xl" />
-          <Skeleton className="h-36 rounded-2xl" />
-          <Skeleton className="h-36 rounded-2xl" />
+      <div className="glass-panel rounded-[1.625rem] p-8">
+        <Skeleton className="mb-6 h-8 w-56 rounded-xl" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Skeleton className="col-span-2 row-span-2 min-h-[220px] rounded-[1.625rem]" />
+          <Skeleton className="min-h-[120px] rounded-[1.625rem]" />
+          <Skeleton className="min-h-[120px] rounded-[1.625rem]" />
+          <Skeleton className="min-h-[120px] rounded-[1.625rem]" />
+          <Skeleton className="min-h-[120px] rounded-[1.625rem]" />
         </div>
       </div>
     );
@@ -143,7 +219,7 @@ export default function BusinessOverviewPage({
 
   if (!business) {
     return (
-      <div className="glass-panel rounded-2xl p-8 text-[var(--lv-muted-strong)]">
+      <div className="glass-panel rounded-[1.625rem] p-8 text-[var(--lv-muted-strong)]">
         Unable to load this workspace.
       </div>
     );
@@ -153,27 +229,50 @@ export default function BusinessOverviewPage({
   const restaurantTotals = restaurantProfitFromTransactions(transactions);
   const mobileTotals = mobileProfitFromTransactions(transactions);
 
-  const pill =
-    "rounded-lg px-3 py-2 text-sm font-medium transition hover:scale-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:focus-visible:ring-cyan-400/55";
-  const pillActive = cn(
-    pill,
-    "bg-blue-600/90 text-white ring-1 ring-blue-400/55 dark:bg-cyan-400/25 dark:text-white dark:ring-cyan-400/50",
-  );
-  const pillIdle = cn(
-    pill,
-    "border border-[var(--lv-border)] bg-[var(--lv-surface-soft)] text-[var(--lv-muted-strong)] hover:bg-[var(--lv-surface-muted)] hover:text-[var(--lv-heading)] dark:bg-white/5 dark:hover:bg-white/10 dark:hover:text-white",
-  );
+  const rCashS = seriesFromRestaurant(restaurantSlices, "cash");
+  const rBankS = seriesFromRestaurant(restaurantSlices, "bank");
+  const rPurchS = seriesFromRestaurant(restaurantSlices, "purchases");
+  const rExpS = seriesFromRestaurant(restaurantSlices, "expenses");
+  const rProfS = seriesFromRestaurant(restaurantSlices, "profit");
+
+  const mPhoneRevS = seriesFromMobile(mobileSlices, "phoneSales");
+  const mPhoneMargS = seriesFromMobile(mobileSlices, "phoneProfit");
+  const mSimS = seriesFromMobile(mobileSlices, "simSales");
+  const mRepairS = seriesFromMobile(mobileSlices, "repairs");
+  const mPurchS = seriesFromMobile(mobileSlices, "purchases");
+  const mExpS = seriesFromMobile(mobileSlices, "expenses");
+  const mProfS = seriesFromMobile(mobileSlices, "profit");
+
+  const restaurantProfitSparkTone: TrafficTone =
+    restaurantTotals.profit < 0 ? "critical" : sparkTrendTone(rProfS);
+  const mobileProfitSparkTone: TrafficTone =
+    mobileTotals.profit < 0 ? "critical" : sparkTrendTone(mProfS);
 
   return (
-    <section className="space-y-4">
-      <div className="glass-panel rounded-2xl p-6 shadow-lg shadow-slate-900/10 dark:shadow-black/35">
-        <p className="text-xs uppercase tracking-wide text-blue-700 dark:text-cyan-200">Overview</p>
-        <h1 className="mt-2 text-2xl font-semibold text-[var(--lv-heading)]">{business.name}</h1>
-        <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-          Figures below include only transactions in the selected window.
-        </p>
+    <section className="space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 380, damping: 32 }}
+        className="glass-panel rounded-[1.625rem] p-6 sm:p-7"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+              Workspace overview
+            </p>
+            <h1 className="mt-2 text-balance font-sans text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
+              {business.name}
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
+              Bento tiles below follow your selected window. Sparklines trace the{" "}
+              <span className="text-[var(--lv-heading)]">last 7 local days</span> regardless of filters.
+              {sparkLoading ? <span className="opacity-70"> Updating trends…</span> : null}
+            </p>
+          </div>
+        </div>
 
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             <button type="button" className={period === "today" ? pillActive : pillIdle} onClick={() => setPeriod("today")}>
               Today
@@ -192,7 +291,7 @@ export default function BusinessOverviewPage({
           </div>
           {period === "day" ? (
             <div className="flex items-center gap-2">
-              <label htmlFor="overview-date" className="text-xs text-[var(--lv-muted)]">
+              <label htmlFor="overview-date" className="text-xs font-medium text-[var(--lv-muted)]">
                 Date
               </label>
               <input
@@ -200,71 +299,157 @@ export default function BusinessOverviewPage({
                 type="date"
                 value={selectedDay}
                 onChange={(event) => setSelectedDay(event.target.value)}
-                className="lv-input max-w-[11rem]"
+                className="lv-input max-w-[11rem] rounded-xl"
               />
             </div>
           ) : null}
         </div>
 
-        <p className="mt-3 text-xs text-[var(--lv-muted)]">
-          Showing: <span className="text-[var(--lv-heading)]">{periodLabel}</span>
-          {txLoading ? <span className="opacity-75"> · Loading…</span> : null}
+        <p className="mt-4 font-mono text-xs tabular-nums text-[var(--lv-muted)]">
+          Window:{" "}
+          <span className="text-[var(--lv-heading)]">
+            {periodLabel}
+            {txLoading ? " · loading…" : ""}
+          </span>
         </p>
 
         {txError ? (
-          <p className="mt-3 rounded-lg bg-rose-500/15 px-3 py-2 text-sm text-rose-700 dark:text-rose-200" role="alert">
+          <p
+            className="mt-4 rounded-xl border border-[color-mix(in_srgb,var(--lv-traffic-critical)_35%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_10%,transparent)] px-3 py-2.5 text-sm text-[var(--lv-traffic-critical)]"
+            role="alert"
+          >
             {txError}
           </p>
         ) : null}
-      </div>
+      </motion.div>
 
       {isRestaurant ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <StatCard
-            title="Cash sales"
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-[minmax(128px,auto)]">
+          <BentoCell
+            featured
+            className="col-span-2 row-span-2 min-h-[240px] p-7 sm:p-8"
+          >
+            <div className="flex h-full flex-col justify-between gap-6">
+              <div>
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+                  Net profit
+                </p>
+                <p
+                  className={cn(
+                    "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
+                    toneProfitNumeric(restaurantTotals.profit) === "positive" && "text-[var(--lv-traffic-positive)]",
+                    toneProfitNumeric(restaurantTotals.profit) === "neutral" && "text-[var(--lv-traffic-neutral)]",
+                    toneProfitNumeric(restaurantTotals.profit) === "critical" && "text-[var(--lv-traffic-critical)]",
+                  )}
+                >
+                  {formatCurrency(restaurantTotals.profit)}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <Sparkline values={rProfS} tone={restaurantProfitSparkTone} width={172} height={52} />
+                <p className="max-w-[14rem] text-xs leading-relaxed text-[var(--lv-muted-strong)] opacity-70 transition-opacity duration-300 group-hover/lv-bento:opacity-100">
+                  Cash + bank sales − purchases − expenses for the active window above.
+                </p>
+              </div>
+            </div>
+          </BentoCell>
+
+          <MetricMini
+            label="Cash sales"
             value={formatCurrency(restaurantTotals.cash)}
-            note="Structured daily entry"
+            series={rCashS}
+            hint="Card & till in structured daily entry"
           />
-          <StatCard
-            title="Bank sales"
+          <MetricMini
+            label="Bank sales"
             value={formatCurrency(restaurantTotals.bank)}
-            note="Structured daily entry"
+            series={rBankS}
+            hint="Transfers & card settlements grouped as bank takings"
           />
-          <StatCard title="Purchases" value={formatCurrency(restaurantTotals.purchases)} note="Period total" />
-          <StatCard title="Expenses" value={formatCurrency(restaurantTotals.expenses)} note="Period total" />
-          <StatCard
-            title="Profit"
-            value={formatCurrency(restaurantTotals.profit)}
-            note="Combined sales − purchases − expenses"
-            positive={restaurantTotals.profit >= 0}
+          <MetricMini
+            label="Purchases"
+            value={formatCurrency(restaurantTotals.purchases)}
+            series={rPurchS}
+            hint="Ingredient & supply purchasing for this window"
+          />
+          <MetricMini
+            label="Expenses"
+            value={formatCurrency(restaurantTotals.expenses)}
+            series={rExpS}
+            hint="Operating overhead captured in Daily Entry"
           />
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="Phone sales (revenue)" value={formatCurrency(mobileTotals.phoneSales)} note="Selling prices" />
-          <StatCard title="Phone profit (margin)" value={formatCurrency(mobileTotals.phoneProfit)} note="From daily entry handset rows" />
-          <StatCard title="SIM sales" value={formatCurrency(mobileTotals.simSales)} note="Combined carriers" />
-          <StatCard title="Repairs income" value={formatCurrency(mobileTotals.repairs)} note="Repair services" />
-          <StatCard title="Purchases" value={formatCurrency(mobileTotals.purchases)} note="Operational" />
-          <StatCard title="Expenses" value={formatCurrency(mobileTotals.expenses)} note="Overhead" />
-          <StatCard
-            title="Profit"
-            value={formatCurrency(mobileTotals.profit)}
-            note="Phone profit + SIM + repairs − purchases − expenses"
-            positive={mobileTotals.profit >= 0}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-[minmax(120px,auto)]">
+          <BentoCell featured className="col-span-2 row-span-2 min-h-[260px] p-7 sm:p-8">
+            <div className="flex h-full flex-col justify-between gap-6">
+              <div>
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+                  Net profit
+                </p>
+                <p
+                  className={cn(
+                    "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
+                    toneProfitNumeric(mobileTotals.profit) === "positive" && "text-[var(--lv-traffic-positive)]",
+                    toneProfitNumeric(mobileTotals.profit) === "neutral" && "text-[var(--lv-traffic-neutral)]",
+                    toneProfitNumeric(mobileTotals.profit) === "critical" && "text-[var(--lv-traffic-critical)]",
+                  )}
+                >
+                  {formatCurrency(mobileTotals.profit)}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <Sparkline values={mProfS} tone={mobileProfitSparkTone} width={172} height={52} />
+                <p className="max-w-[15rem] text-xs leading-relaxed text-[var(--lv-muted-strong)] opacity-75 transition-opacity duration-300 group-hover/lv-bento:opacity-100">
+                  Handset margin + SIM + repairs − inventory purchases − overhead.
+                </p>
+              </div>
+            </div>
+          </BentoCell>
+
+          <MetricMini
+            label="Phone revenue"
+            value={formatCurrency(mobileTotals.phoneSales)}
+            series={mPhoneRevS}
+            hint="Sum of handset selling prices in Daily Entry"
+          />
+          <MetricMini
+            label="Phone margin"
+            value={formatCurrency(mobileTotals.phoneProfit)}
+            series={mPhoneMargS}
+            hint="Profit field captured per handset row"
+          />
+          <MetricMini label="SIM sales" value={formatCurrency(mobileTotals.simSales)} series={mSimS} hint="Vodafone + Wind bundle" />
+          <MetricMini label="Repairs" value={formatCurrency(mobileTotals.repairs)} series={mRepairS} hint="Repair services income" />
+          <MetricMini
+            label="Purchases"
+            value={formatCurrency(mobileTotals.purchases)}
+            series={mPurchS}
+            hint="Operational inventory buys"
+            className="lg:col-span-2"
+          />
+          <MetricMini
+            label="Expenses"
+            value={formatCurrency(mobileTotals.expenses)}
+            series={mExpS}
+            hint="Shop overhead for the window"
+            className="lg:col-span-2"
           />
         </div>
       )}
 
       {!txLoading && transactions.length === 0 ? (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="rounded-xl border border-[var(--lv-border)] bg-[var(--lv-surface-muted)] px-4 py-3 text-sm text-[var(--lv-muted-strong)] dark:bg-white/5"
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel rounded-[1.625rem] border border-dashed border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] px-5 py-4 text-sm text-[var(--lv-muted-strong)]"
         >
-          No transactions in this window. Use{" "}
-          <strong className="text-[var(--lv-heading)]">Daily Entry</strong> or adjust filters.
-        </motion.p>
+          No transactions in this window. Capture figures in{" "}
+          <span className="font-semibold text-[var(--lv-heading)]">Daily Entry</span> or widen the filters.
+          <span className="mt-2 block text-xs opacity-80">
+            Need history? Tip: Sparklines above still summarize the trailing week once data exists.
+          </span>
+        </motion.div>
       ) : null}
     </section>
   );
@@ -274,44 +459,37 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
 }
 
-function StatCard({
-  title,
+function MetricMini({
+  label,
   value,
-  note,
-  positive,
+  series,
+  hint,
+  className,
 }: {
-  title: string;
+  label: string;
   value: string;
-  note: string;
-  positive?: boolean;
+  series: number[];
+  hint: string;
+  className?: string;
 }) {
+  const tone = sparkTrendTone(series);
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 14 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.28 }}
-      whileHover={{ scale: 1.025 }}
-      className="glass-panel rounded-2xl p-5 shadow-xl shadow-slate-900/10 dark:shadow-black/35"
-    >
-      <p className="text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">{title}</p>
-      <p
-        className={cn(
-          "mt-2 text-2xl font-semibold",
-          positive !== undefined
-            ? positive
-              ? "text-emerald-600 dark:text-emerald-300"
-              : "text-rose-600 dark:text-rose-300"
-            : "text-[var(--lv-heading)]",
-        )}
-      >
-        {value}
+    <BentoCell className={cn("justify-between gap-4 p-5 sm:p-6", className)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[var(--lv-muted-strong)]">{label}</p>
+          <p className="lv-tabular-mono mt-2 text-xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-2xl">{value}</p>
+        </div>
+        <Sparkline values={series} tone={tone} width={116} height={40} />
+      </div>
+      <p className="text-xs leading-snug text-[var(--lv-muted-strong)] opacity-0 max-h-0 translate-y-1 overflow-hidden transition-all duration-300 group-hover/lv-bento:max-h-24 group-hover/lv-bento:translate-y-0 group-hover/lv-bento:opacity-100">
+        {hint}
       </p>
-      <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">{note}</p>
-    </motion.article>
+    </BentoCell>
   );
 }

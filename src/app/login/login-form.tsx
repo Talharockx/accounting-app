@@ -5,12 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { GlassFormCard } from "@/components/ui/glass-form-card";
+import { MidnightField } from "@/components/ui/midnight-field";
+import { PressableButton } from "@/components/ui/pressable";
 import { getUserFriendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabaseClient";
 
 const isDev = process.env.NODE_ENV === "development";
-const devSuperAdminEnabled =
-  isDev && process.env.NEXT_PUBLIC_ENABLE_DEV_SUPER_ADMIN === "true";
+const devSuperAdminEnabled = isDev && process.env.NEXT_PUBLIC_ENABLE_DEV_SUPER_ADMIN === "true";
 const devSuperAdminEmail = process.env.NEXT_PUBLIC_DEV_SUPER_ADMIN_EMAIL ?? "";
 const devSuperAdminPassword = process.env.NEXT_PUBLIC_DEV_SUPER_ADMIN_PASSWORD ?? "";
 
@@ -84,74 +86,55 @@ export function LoginForm() {
       title="Welcome Back"
       subtitle="Sign in to continue managing your restaurant or mobile shop accounting."
     >
-      <form className="space-y-5" onSubmit={handleLogin}>
-        <div className="space-y-2">
-          <label htmlFor="email" className="text-sm font-medium text-[var(--lv-heading)]">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="lv-input"
-            placeholder="you@business.com"
-            required
-          />
-        </div>
+      <GlassFormCard>
+          <form className="flex flex-col gap-5" onSubmit={handleLogin}>
+            <MidnightField id="email" label="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
 
-        <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-medium text-[var(--lv-heading)]">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="lv-input"
-            placeholder="Enter your password"
-            required
-          />
-        </div>
+            <MidnightField
+              id="password"
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
 
-        {error ? (
-          <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
-            {error}
-          </p>
-        ) : null}
+            {error ? (
+              <p className="text-sm font-medium text-[var(--lv-traffic-critical)]" role="alert">
+                {error}
+              </p>
+            ) : null}
 
-        <button
-          type="submit"
-          className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:scale-[1.02] hover:from-blue-500 hover:to-blue-400 disabled:cursor-not-allowed disabled:opacity-70 dark:from-cyan-400 dark:to-blue-500 dark:text-slate-950 dark:hover:from-cyan-300 dark:hover:to-blue-400"
-          disabled={loading}
-        >
-          {loading ? "Signing in…" : "Login"}
-        </button>
+            <PressableButton type="submit" className="min-h-12 w-full" disabled={loading}>
+              {loading ? "Signing in…" : "Login"}
+            </PressableButton>
 
-        <p className="text-center text-sm text-[var(--lv-muted-strong)]">
-          New to LedgerView?{" "}
-          <Link href="/sign-up" className="font-medium text-[var(--lv-accent)] hover:underline">
-            Create an account
-          </Link>
-        </p>
-
-        {devSuperAdminEnabled ? (
-          <div className="border-t border-[var(--lv-border)] pt-5">
-            <p className="mb-3 text-center text-xs text-amber-800 dark:text-amber-200">
-              Local testing only: session stays signed in until you sign out or clear site data.
+            <p className="text-center text-sm text-[var(--lv-muted-strong)]">
+              New to LedgerView?{" "}
+              <Link href="/sign-up" className="cursor-pointer font-semibold text-[var(--lv-accent)] hover:underline">
+                Create an account
+              </Link>
             </p>
-            <button
-              type="button"
-              onClick={handleDevSuperAdminLogin}
-              disabled={loading}
-              className="w-full rounded-xl border border-amber-500/35 bg-amber-500/10 px-5 py-3 text-sm font-semibold text-amber-900 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-70 dark:text-amber-100"
-            >
-              {loading ? "Signing in…" : "Super Admin (dev quick login)"}
-            </button>
-          </div>
-        ) : null}
-      </form>
+
+            {devSuperAdminEnabled ? (
+              <div className="border-t border-[#ffffff10] pt-5">
+                <p className="mb-3 text-center text-xs text-[var(--lv-traffic-neutral)]">
+                  Local testing only: session stays signed in until you sign out or clear site data.
+                </p>
+                <PressableButton
+                  type="button"
+                  variant="secondary"
+                  className="min-h-12 w-full"
+                  onClick={handleDevSuperAdminLogin}
+                  disabled={loading}
+                >
+                  {loading ? "Signing in…" : "Super Admin (dev quick login)"}
+                </PressableButton>
+              </div>
+            ) : null}
+          </form>
+      </GlassFormCard>
     </AuthShell>
   );
 }

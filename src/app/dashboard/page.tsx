@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { AddBusinessSection, type BusinessType } from "@/components/dashboard/add-business-section";
 import { BusinessesNav } from "@/components/dashboard/businesses-nav";
+import { BentoCell } from "@/components/ui/bento-cell";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
@@ -116,15 +117,22 @@ export default function DashboardPage() {
     const initialize = async () => {
       try {
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!user) {
-          router.replace("/login");
-          return;
+          data: { session },
+        } = await supabase.auth.getSession();
+        const sessionUser = session?.user;
+        if (sessionUser) {
+          await loadBusinesses(sessionUser.id);
+        } else {
+          const {
+            data: { user },
+            error: userErr,
+          } = await supabase.auth.getUser();
+          if (!user || userErr) {
+            router.replace("/login");
+            return;
+          }
+          await loadBusinesses(user.id);
         }
-
-        await loadBusinesses(user.id);
       } catch (caught) {
         toast.error(getUserFriendlyError(caught));
         router.replace("/login");
@@ -133,7 +141,8 @@ export default function DashboardPage() {
       }
     };
 
-    void initialize();
+    const id = window.setTimeout(() => void initialize(), 0);
+    return () => window.clearTimeout(id);
   }, [router]);
 
   const handleCreateBusiness = async (event: FormEvent<HTMLFormElement>) => {
@@ -197,35 +206,50 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="relative min-h-screen lv-page text-[var(--foreground)]">
+    <main className="lv-dashboard-canvas min-h-screen text-[var(--foreground)] pb-16">
+      <div className="lv-dashboard-mesh-bg" aria-hidden>
+        <div className="blob blob-1" />
+        <div className="blob blob-2" />
+        <div className="blob blob-3" />
+      </div>
       <BusinessesNav
         onAddRestaurant={handleNavAddRestaurant}
         onAddMobileShop={handleNavAddMobileShop}
         onSignOutIntent={() => setSignOutConfirm(true)}
       />
 
-      <section className="relative mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 md:px-10">
-        <div className="mb-8">
-          <h1 className="text-3xl font-semibold tracking-tight text-[var(--lv-heading)]">{title}</h1>
-          <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-            Manage your restaurants and mobile shops from one place. Open a card to work inside that
-            business.
+      <section className="relative mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 md:px-10">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 360, damping: 32 }}
+          className="mb-10"
+        >
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
+            LedgerView command center
           </p>
-        </div>
+          <h1 className="mt-3 text-balance text-3xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-4xl">
+            {title}
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
+            Modular workspaces keep accounting separated by location. Larger cards highlight momentum—open
+            anywhere to drill into journals, receipts, or monthly rollups.
+          </p>
+        </motion.div>
 
         {error ? (
-          <p className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
+          <p className="mb-6 rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-traffic-critical)_42%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_10%,transparent)] px-4 py-3 text-sm text-[var(--lv-traffic-critical)]">
             {error}
           </p>
         ) : null}
 
         {loading ? (
-          <div className="glass-panel rounded-2xl p-8">
-            <Skeleton className="mb-4 h-8 w-64" />
+          <div className="glass-panel rounded-[1.625rem] p-8">
+            <Skeleton className="mb-4 h-8 w-64 rounded-xl" />
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <Skeleton className="h-44 rounded-2xl" />
-              <Skeleton className="h-44 rounded-2xl" />
-              <Skeleton className="h-44 rounded-2xl" />
+              <Skeleton className="h-48 rounded-[1.625rem]" />
+              <Skeleton className="h-48 rounded-[1.625rem]" />
+              <Skeleton className="h-48 rounded-[1.625rem]" />
             </div>
           </div>
         ) : null}
@@ -244,36 +268,41 @@ export default function DashboardPage() {
         ) : null}
 
         {!loading && hasBusinesses ? (
-          <div className="space-y-12">
+          <div className="space-y-14">
             <div>
-              <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-[var(--lv-muted-strong)]">
-                Your locations
+              <h2 className="mb-6 text-[0.6875rem] font-semibold uppercase tracking-[0.24em] text-[var(--lv-muted-strong)]">
+                Modular workspaces
               </h2>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {businesses.map((business) => (
-                  <motion.div
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {businesses.map((business, idx) => (
+                  <BentoCell
                     key={business.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ duration: 0.25 }}
-                    className="flex flex-col overflow-hidden rounded-2xl glass-panel shadow-xl shadow-slate-900/10 dark:shadow-black/35"
+                    className="flex flex-col overflow-hidden p-0"
+                    featured={idx === 0}
                   >
                     <Link
                       href={`/dashboard/${business.id}`}
-                      className="flex flex-1 flex-col p-6 transition hover:bg-[var(--lv-surface-muted)] dark:hover:bg-white/[0.06]"
+                      className="flex flex-1 flex-col p-7 transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--lv-accent)_06%,transparent)]"
                     >
-                      <p className="text-xs uppercase tracking-wide text-[var(--lv-accent)]">
+                      <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-accent)]">
                         {business.business_type === "restaurant" ? "Restaurant" : "Mobile shop"}
                       </p>
-                      <h3 className="mt-3 text-xl font-semibold text-[var(--lv-heading)]">{business.name}</h3>
-                      <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-                        Created {new Date(business.created_at).toLocaleDateString()}
+                      <h3 className="mt-4 text-xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-2xl">
+                        {business.name}
+                      </h3>
+                      <p className="lv-tabular-mono mt-3 text-xs text-[var(--lv-muted-strong)] opacity-70 transition-opacity group-hover/lv-bento:opacity-100">
+                        Created {new Date(business.created_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
                       </p>
-                      <p className="mt-4 text-sm font-medium text-[var(--lv-accent)]">Open workspace →</p>
+                      <div className="mt-8 flex items-center gap-2 text-sm font-semibold text-[var(--lv-accent)]">
+                        Open cockpit
+                        <span aria-hidden>→</span>
+                      </div>
+                      <p className="pointer-events-none mt-3 max-w-none text-xs text-[var(--lv-muted-strong)] opacity-0 transition-all duration-300 group-hover/lv-bento:opacity-100">
+                        Jumps straight into LedgerView dashboards, journals, exports, and automations scoped to this
+                        workspace.
+                      </p>
                     </Link>
-                    <div className="flex items-center justify-end gap-2 border-t border-[var(--lv-border)] px-4 py-3">
+                    <div className="flex items-center justify-end gap-2 border-t border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] px-5 py-3.5">
                       <button
                         type="button"
                         disabled={deletingId === business.id}
@@ -282,14 +311,14 @@ export default function DashboardPage() {
                           setBusinessToDelete(business);
                         }}
                         className={cn(
-                          "rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-500/20 dark:text-rose-200",
+                          "rounded-[0.75rem] border border-[color-mix(in_srgb,var(--lv-traffic-critical)_45%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_12%,transparent)] px-3.5 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--lv-traffic-critical)] transition hover:bg-[color-mix(in_srgb,var(--lv-traffic-critical)_20%,transparent)]",
                           "disabled:cursor-not-allowed disabled:opacity-50",
                         )}
                       >
-                        {deletingId === business.id ? "Deleting…" : "Delete business"}
+                        {deletingId === business.id ? "Deleting…" : "Remove"}
                       </button>
                     </div>
-                  </motion.div>
+                  </BentoCell>
                 ))}
               </div>
             </div>
