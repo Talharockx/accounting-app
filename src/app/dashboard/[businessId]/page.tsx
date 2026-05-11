@@ -1,29 +1,22 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   mobileProfitFromTransactions,
   restaurantProfitFromTransactions,
 } from "@/lib/dashboard/daily-entry";
 import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
-import {
-  mobileSparkSeries,
-  restaurantSparkSeries,
-  rollingDaysISOIncludingToday,
-  seriesFromMobile,
-  seriesFromRestaurant,
-  sparkTrendTone,
-} from "@/lib/dashboard/sparkline-series";
+import type { TrafficTone } from "@/components/ui/sparkline";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
-import { getTodayLocalISO, getWeekToDateRangeLocal } from "@/lib/utils/date-range";
+import { getMonthBoundariesISO, getTodayLocalISO, minISODate } from "@/lib/utils/date-range";
 import { supabase } from "@/lib/supabaseClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BentoCell } from "@/components/ui/bento-cell";
-import { Sparkline, type TrafficTone } from "@/components/ui/sparkline";
+import { PressableButton } from "@/components/ui/pressable";
 import { cn } from "@/lib/utils/cn";
 
 type Business = {
@@ -32,7 +25,14 @@ type Business = {
   business_type: "restaurant" | "mobile_shop";
 };
 
-type PeriodFilter = "today" | "week" | "day";
+type PeriodFilter = "today" | "pick" | "range";
+
+function defaultMonthToDateRange(): { start: string; end: string } {
+  const now = new Date();
+  const { start, end: monthEnd } = getMonthBoundariesISO(now.getFullYear(), now.getMonth());
+  const today = getTodayLocalISO(now);
+  return { start, end: minISODate(monthEnd, today) };
+}
 
 export default function BusinessOverviewPage({
   params,
@@ -44,16 +44,16 @@ export default function BusinessOverviewPage({
   const [businessId, setBusinessId] = useState("");
   const [transactions, setTransactions] = useState<TransactionWithMeta[]>([]);
   const [period, setPeriod] = useState<PeriodFilter>("today");
-  const [selectedDay, setSelectedDay] = useState(() => getTodayLocalISO());
+  const [pickedDate, setPickedDate] = useState(() => getTodayLocalISO());
+  const [rangeStart, setRangeStart] = useState(() => defaultMonthToDateRange().start);
+  const [rangeEnd, setRangeEnd] = useState(() => defaultMonthToDateRange().end);
+  const [draftStart, setDraftStart] = useState(() => defaultMonthToDateRange().start);
+  const [draftEnd, setDraftEnd] = useState(() => defaultMonthToDateRange().end);
   const [txLoading, setTxLoading] = useState(true);
   const [txError, setTxError] = useState("");
 
-  const [sparkTransactions, setSparkTransactions] = useState<TransactionWithMeta[]>([]);
-  const [sparkLoading, setSparkLoading] = useState(false);
-
-  const sparkDays = useMemo(() => rollingDaysISOIncludingToday(7), []);
-
-  const loadTransactions = useCallback(async (id: string, p: PeriodFilter, dayISO: string) => {
+  const loadTransactions = useCallback(
+    async (id: string, p: PeriodFilter, range: { start: string; end: string }, singleDay: string) => {
     setTxLoading(true);
     setTxError("");
 
@@ -61,13 +61,13 @@ export default function BusinessOverviewPage({
       let query = supabase.from("transactions").select(selectColumns).eq("business_id", id);
 
       if (p === "today") {
-        const t = getTodayLocalISO();
-        query = query.eq("transaction_date", t);
-      } else if (p === "week") {
-        const { start, end } = getWeekToDateRangeLocal();
-        query = query.gte("transaction_date", start).lte("transaction_date", end);
+        query = query.eq("transaction_date", getTodayLocalISO());
+      } else if (p === "pick") {
+        query = query.eq("transaction_date", singleDay);
       } else {
-        query = query.eq("transaction_date", dayISO);
+        const lo = range.start <= range.end ? range.start : range.end;
+        const hi = range.start <= range.end ? range.end : range.start;
+        query = query.gte("transaction_date", lo).lte("transaction_date", hi);
       }
 
       return query.order("transaction_date", { ascending: false });
@@ -98,41 +98,9 @@ export default function BusinessOverviewPage({
     }
 
     setTxLoading(false);
-  }, []);
-
-  const loadSparkWindow = useCallback(async (id: string) => {
-    setSparkLoading(true);
-    const start = sparkDays[0]!;
-    const end = sparkDays[sparkDays.length - 1]!;
-    try {
-      const result = await selectWithMetadataColumnFallback(
-        async () =>
-          await supabase
-            .from("transactions")
-            .select("amount, transaction_type, description, transaction_date, metadata")
-            .eq("business_id", id)
-            .gte("transaction_date", start)
-            .lte("transaction_date", end)
-            .order("transaction_date", { ascending: true }),
-        async () =>
-          await supabase
-            .from("transactions")
-            .select("amount, transaction_type, description, transaction_date")
-            .eq("business_id", id)
-            .gte("transaction_date", start)
-            .lte("transaction_date", end)
-            .order("transaction_date", { ascending: true }),
-      );
-      if (result.error) {
-        setSparkTransactions([]);
-      } else {
-        setSparkTransactions(mapTransactionRows(result.data ?? []));
-      }
-    } catch {
-      setSparkTransactions([]);
-    }
-    setSparkLoading(false);
-  }, [sparkDays]);
+  },
+  [],
+);
 
   useEffect(() => {
     const loadBusiness = async () => {
@@ -163,24 +131,46 @@ export default function BusinessOverviewPage({
 
   useEffect(() => {
     if (!businessId) return;
-    const id = window.setTimeout(() => void loadSparkWindow(businessId), 0);
+    const id = window.setTimeout(
+      () => void loadTransactions(businessId, period, { start: rangeStart, end: rangeEnd }, pickedDate),
+      0,
+    );
     return () => window.clearTimeout(id);
-  }, [businessId, loadSparkWindow]);
+  }, [businessId, period, rangeStart, rangeEnd, pickedDate, loadTransactions]);
 
-  useEffect(() => {
-    if (!businessId) return;
-    const id = window.setTimeout(() => void loadTransactions(businessId, period, selectedDay), 0);
-    return () => window.clearTimeout(id);
-  }, [businessId, period, selectedDay, loadTransactions]);
+  const todayISO = getTodayLocalISO();
 
   const periodLabel = (() => {
-    if (period === "today") return `Today (${getTodayLocalISO()})`;
-    if (period === "week") {
-      const { start, end } = getWeekToDateRangeLocal();
-      return `Week to date (${start} → ${end})`;
-    }
-    return `Selected day (${selectedDay})`;
+    if (period === "today") return `Today (${todayISO})`;
+    if (period === "pick") return `Selected day (${pickedDate})`;
+    const lo = rangeStart <= rangeEnd ? rangeStart : rangeEnd;
+    const hi = rangeStart <= rangeEnd ? rangeEnd : rangeStart;
+    return `Custom range (${lo} → ${hi})`;
   })();
+
+  const openCustomRange = () => {
+    const d = defaultMonthToDateRange();
+    setDraftStart(d.start);
+    setDraftEnd(d.end);
+    setRangeStart(d.start);
+    setRangeEnd(d.end);
+    setPeriod("range");
+  };
+
+  const applyCustomRange = () => {
+    let start = draftStart;
+    let end = draftEnd;
+    if (start > end) {
+      const t = start;
+      start = end;
+      end = t;
+    }
+    setRangeStart(start);
+    setRangeEnd(end);
+    setDraftStart(start);
+    setDraftEnd(end);
+    toast.success("Date range applied.");
+  };
 
   const pill =
     "rounded-xl px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--lv-accent)_50%,transparent)]";
@@ -192,9 +182,6 @@ export default function BusinessOverviewPage({
     pill,
     "border border-[color-mix(in_srgb,var(--lv-glass-edge)_55%,transparent)] bg-[var(--lv-liquid-fill)] text-[var(--lv-muted-strong)] backdrop-blur-md hover:border-[color-mix(in_srgb,var(--lv-glass-edge)_75%,transparent)] hover:text-[var(--lv-heading)]",
   );
-
-  const restaurantSlices = useMemo(() => restaurantSparkSeries(sparkTransactions, sparkDays), [sparkTransactions, sparkDays]);
-  const mobileSlices = useMemo(() => mobileSparkSeries(sparkTransactions, sparkDays), [sparkTransactions, sparkDays]);
 
   function toneProfitNumeric(current: number): TrafficTone {
     if (current < 0) return "critical";
@@ -229,25 +216,6 @@ export default function BusinessOverviewPage({
   const restaurantTotals = restaurantProfitFromTransactions(transactions);
   const mobileTotals = mobileProfitFromTransactions(transactions);
 
-  const rCashS = seriesFromRestaurant(restaurantSlices, "cash");
-  const rBankS = seriesFromRestaurant(restaurantSlices, "bank");
-  const rPurchS = seriesFromRestaurant(restaurantSlices, "purchases");
-  const rExpS = seriesFromRestaurant(restaurantSlices, "expenses");
-  const rProfS = seriesFromRestaurant(restaurantSlices, "profit");
-
-  const mPhoneRevS = seriesFromMobile(mobileSlices, "phoneSales");
-  const mPhoneMargS = seriesFromMobile(mobileSlices, "phoneProfit");
-  const mSimS = seriesFromMobile(mobileSlices, "simSales");
-  const mRepairS = seriesFromMobile(mobileSlices, "repairs");
-  const mPurchS = seriesFromMobile(mobileSlices, "purchases");
-  const mExpS = seriesFromMobile(mobileSlices, "expenses");
-  const mProfS = seriesFromMobile(mobileSlices, "profit");
-
-  const restaurantProfitSparkTone: TrafficTone =
-    restaurantTotals.profit < 0 ? "critical" : sparkTrendTone(rProfS);
-  const mobileProfitSparkTone: TrafficTone =
-    mobileTotals.profit < 0 ? "critical" : sparkTrendTone(mProfS);
-
   return (
     <section className="space-y-6">
       <motion.div
@@ -264,43 +232,87 @@ export default function BusinessOverviewPage({
             <h1 className="mt-2 text-balance font-sans text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
               {business.name}
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
-              Bento tiles below follow your selected window. Sparklines trace the{" "}
-              <span className="text-[var(--lv-heading)]">last 7 local days</span> regardless of filters.
-              {sparkLoading ? <span className="opacity-70"> Updating trends…</span> : null}
-            </p>
           </div>
         </div>
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
             <button type="button" className={period === "today" ? pillActive : pillIdle} onClick={() => setPeriod("today")}>
               Today
             </button>
             <button
               type="button"
-              className={period === "week" ? pillActive : pillIdle}
-              onClick={() => setPeriod("week")}
-              title="Monday through today"
+              className={period === "pick" ? pillActive : pillIdle}
+              onClick={() => setPeriod("pick")}
+              title="Totals for one calendar day"
             >
-              Week to date
-            </button>
-            <button type="button" className={period === "day" ? pillActive : pillIdle} onClick={() => setPeriod("day")}>
               Pick a date
             </button>
+            <button
+              type="button"
+              className={period === "range" ? pillActive : pillIdle}
+              onClick={() => {
+                if (period !== "range") openCustomRange();
+              }}
+              title="Choose start and end dates (your browser calendar)"
+            >
+              Custom range
+            </button>
           </div>
-          {period === "day" ? (
-            <div className="flex items-center gap-2">
-              <label htmlFor="overview-date" className="text-xs font-medium text-[var(--lv-muted)]">
-                Date
-              </label>
-              <input
-                id="overview-date"
-                type="date"
-                value={selectedDay}
-                onChange={(event) => setSelectedDay(event.target.value)}
-                className="lv-input max-w-[11rem] rounded-xl"
-              />
+          {period === "pick" ? (
+            <div
+              className="flex flex-col gap-3 rounded-xl border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_55%,transparent)] p-4 backdrop-blur-md sm:flex-row sm:items-end"
+              role="region"
+              aria-label="Pick a calendar day"
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[12rem]">
+                <label htmlFor="overview-pick-date" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
+                  Date
+                </label>
+                <input
+                  id="overview-pick-date"
+                  type="date"
+                  value={pickedDate}
+                  max={todayISO}
+                  onChange={(event) => setPickedDate(event.target.value)}
+                  className="lv-input rounded-xl"
+                />
+              </div>
+            </div>
+          ) : null}
+          {period === "range" ? (
+            <div
+              className="flex flex-col gap-4 rounded-xl border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_55%,transparent)] p-4 backdrop-blur-md sm:flex-row sm:flex-wrap sm:items-end"
+              role="region"
+              aria-label="Custom date range"
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[12rem]">
+                <label htmlFor="overview-range-start" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
+                  From
+                </label>
+                <input
+                  id="overview-range-start"
+                  type="date"
+                  value={draftStart}
+                  onChange={(event) => setDraftStart(event.target.value)}
+                  className="lv-input rounded-xl"
+                />
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[12rem]">
+                <label htmlFor="overview-range-end" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
+                  Through
+                </label>
+                <input
+                  id="overview-range-end"
+                  type="date"
+                  value={draftEnd}
+                  onChange={(event) => setDraftEnd(event.target.value)}
+                  className="lv-input rounded-xl"
+                />
+              </div>
+              <PressableButton type="button" className="min-h-12 w-full sm:w-auto sm:shrink-0" onClick={() => applyCustomRange()}>
+                Apply range
+              </PressableButton>
             </div>
           ) : null}
         </div>
@@ -345,39 +357,16 @@ export default function BusinessOverviewPage({
                   {formatCurrency(restaurantTotals.profit)}
                 </p>
               </div>
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <Sparkline values={rProfS} tone={restaurantProfitSparkTone} width={172} height={52} />
-                <p className="max-w-[14rem] text-xs leading-relaxed text-[var(--lv-muted-strong)] opacity-70 transition-opacity duration-300 group-hover/lv-bento:opacity-100">
-                  Cash + bank sales − purchases − expenses for the active window above.
-                </p>
+              <div className="flex items-end">
+                <NetProfitArrow profit={restaurantTotals.profit} />
               </div>
             </div>
           </BentoCell>
 
-          <MetricMini
-            label="Cash sales"
-            value={formatCurrency(restaurantTotals.cash)}
-            series={rCashS}
-            hint="Card & till in structured daily entry"
-          />
-          <MetricMini
-            label="Bank sales"
-            value={formatCurrency(restaurantTotals.bank)}
-            series={rBankS}
-            hint="Transfers & card settlements grouped as bank takings"
-          />
-          <MetricMini
-            label="Purchases"
-            value={formatCurrency(restaurantTotals.purchases)}
-            series={rPurchS}
-            hint="Ingredient & supply purchasing for this window"
-          />
-          <MetricMini
-            label="Expenses"
-            value={formatCurrency(restaurantTotals.expenses)}
-            series={rExpS}
-            hint="Operating overhead captured in Daily Entry"
-          />
+          <MetricMini label="Cash sales" value={formatCurrency(restaurantTotals.cash)} />
+          <MetricMini label="Bank sales" value={formatCurrency(restaurantTotals.bank)} />
+          <MetricMini label="Purchases" value={formatCurrency(restaurantTotals.purchases)} />
+          <MetricMini label="Expenses" value={formatCurrency(restaurantTotals.expenses)} />
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-[minmax(120px,auto)]">
@@ -398,43 +387,18 @@ export default function BusinessOverviewPage({
                   {formatCurrency(mobileTotals.profit)}
                 </p>
               </div>
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <Sparkline values={mProfS} tone={mobileProfitSparkTone} width={172} height={52} />
-                <p className="max-w-[15rem] text-xs leading-relaxed text-[var(--lv-muted-strong)] opacity-75 transition-opacity duration-300 group-hover/lv-bento:opacity-100">
-                  Handset margin + SIM + repairs − inventory purchases − overhead.
-                </p>
+              <div className="flex items-end">
+                <NetProfitArrow profit={mobileTotals.profit} />
               </div>
             </div>
           </BentoCell>
 
-          <MetricMini
-            label="Phone revenue"
-            value={formatCurrency(mobileTotals.phoneSales)}
-            series={mPhoneRevS}
-            hint="Sum of handset selling prices in Daily Entry"
-          />
-          <MetricMini
-            label="Phone margin"
-            value={formatCurrency(mobileTotals.phoneProfit)}
-            series={mPhoneMargS}
-            hint="Profit field captured per handset row"
-          />
-          <MetricMini label="SIM sales" value={formatCurrency(mobileTotals.simSales)} series={mSimS} hint="Vodafone + Wind bundle" />
-          <MetricMini label="Repairs" value={formatCurrency(mobileTotals.repairs)} series={mRepairS} hint="Repair services income" />
-          <MetricMini
-            label="Purchases"
-            value={formatCurrency(mobileTotals.purchases)}
-            series={mPurchS}
-            hint="Operational inventory buys"
-            className="lg:col-span-2"
-          />
-          <MetricMini
-            label="Expenses"
-            value={formatCurrency(mobileTotals.expenses)}
-            series={mExpS}
-            hint="Shop overhead for the window"
-            className="lg:col-span-2"
-          />
+          <MetricMini label="Phone revenue" value={formatCurrency(mobileTotals.phoneSales)} />
+          <MetricMini label="Phone margin" value={formatCurrency(mobileTotals.phoneProfit)} />
+          <MetricMini label="SIM sales" value={formatCurrency(mobileTotals.simSales)} />
+          <MetricMini label="Repairs" value={formatCurrency(mobileTotals.repairs)} />
+          <MetricMini label="Purchases" value={formatCurrency(mobileTotals.purchases)} className="lg:col-span-2" />
+          <MetricMini label="Expenses" value={formatCurrency(mobileTotals.expenses)} className="lg:col-span-2" />
         </div>
       )}
 
@@ -447,7 +411,7 @@ export default function BusinessOverviewPage({
           No transactions in this window. Capture figures in{" "}
           <span className="font-semibold text-[var(--lv-heading)]">Daily Entry</span> or widen the filters.
           <span className="mt-2 block text-xs opacity-80">
-            Need history? Tip: Sparklines above still summarize the trailing week once data exists.
+            Add entries in Daily Entry to populate this workspace.
           </span>
         </motion.div>
       ) : null}
@@ -464,32 +428,63 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function MetricMini({
-  label,
-  value,
-  series,
-  hint,
-  className,
-}: {
-  label: string;
-  value: string;
-  series: number[];
-  hint: string;
-  className?: string;
-}) {
-  const tone = sparkTrendTone(series);
+/** Net profit / loss: up when profit &gt; 0, down when &lt; 0, neutral when zero. */
+function NetProfitArrow({ profit }: { profit: number }) {
+  const direction = profit > 0 ? "up" : profit < 0 ? "down" : "flat";
+  return <TrendArrow direction={direction} size="lg" label={profit > 0 ? "Profit" : profit < 0 ? "Loss" : "Break-even"} />;
+}
+
+function MetricMini({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
     <BentoCell className={cn("justify-between gap-4 p-5 sm:p-6", className)}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[var(--lv-muted-strong)]">{label}</p>
-          <p className="lv-tabular-mono mt-2 text-xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-2xl">{value}</p>
-        </div>
-        <Sparkline values={series} tone={tone} width={116} height={40} />
+      <div className="min-w-0">
+        <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[var(--lv-muted-strong)]">{label}</p>
+        <p className="lv-tabular-mono mt-2 text-xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-2xl">{value}</p>
       </div>
-      <p className="text-xs leading-snug text-[var(--lv-muted-strong)] opacity-0 max-h-0 translate-y-1 overflow-hidden transition-all duration-300 group-hover/lv-bento:max-h-24 group-hover/lv-bento:translate-y-0 group-hover/lv-bento:opacity-100">
-        {hint}
-      </p>
     </BentoCell>
+  );
+}
+
+function TrendArrow({
+  direction,
+  size,
+  label,
+}: {
+  direction: "up" | "down" | "flat";
+  size: "sm" | "lg";
+  label: string;
+}) {
+  const box =
+    size === "lg"
+      ? "h-14 w-14 rounded-2xl sm:h-16 sm:w-16"
+      : "h-10 w-10 rounded-xl";
+  const icon = size === "lg" ? "h-8 w-8 sm:h-9 sm:w-9" : "h-5 w-5";
+  const color =
+    direction === "up"
+      ? "border-[color-mix(in_srgb,var(--lv-traffic-positive)_40%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-positive)_12%,transparent)] text-[var(--lv-traffic-positive)]"
+      : direction === "down"
+        ? "border-[color-mix(in_srgb,var(--lv-traffic-critical)_40%,transparent)] bg-[color-mix(in_srgb,var(--lv-traffic-critical)_12%,transparent)] text-[var(--lv-traffic-critical)]"
+        : "border-[#ffffff10] bg-[#ffffff06] text-[var(--lv-muted-strong)]";
+
+  return (
+    <span
+      className={cn("inline-flex shrink-0 items-center justify-center border", box, color)}
+      role="img"
+      aria-label={label}
+    >
+      {direction === "up" ? (
+        <svg className={icon} viewBox="0 0 24 24" aria-hidden>
+          <path fill="currentColor" d="M12 5L20 18H4L12 5z" />
+        </svg>
+      ) : direction === "down" ? (
+        <svg className={icon} viewBox="0 0 24 24" aria-hidden>
+          <path fill="currentColor" d="M12 19L4 7h16L12 19z" />
+        </svg>
+      ) : (
+        <svg className={icon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path strokeLinecap="round" d="M6 12h12" />
+        </svg>
+      )}
+    </span>
   );
 }

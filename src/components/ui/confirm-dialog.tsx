@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 import { PressableButton } from "@/components/ui/pressable";
 
 type ConfirmDialogProps = {
@@ -25,17 +28,31 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+  /** Portal to `document.body` so `position:fixed` is viewport-relative (avoids main layout `overflow` / transforms mis-centering the overlay). */
+  if (!mounted || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex min-h-0 items-center justify-center overflow-y-auto overscroll-contain p-4 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+    >
       <button
         type="button"
-        className="absolute inset-0 cursor-pointer bg-black/68 backdrop-blur-sm"
+        className="fixed inset-0 cursor-pointer bg-black/68 backdrop-blur-sm"
         aria-label="Close dialog"
         onClick={busy ? undefined : onCancel}
       />
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl shadow-black/55 backdrop-blur-md">
+      <div className="relative z-10 my-auto w-full max-w-md shrink-0 rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl shadow-black/55 backdrop-blur-md">
         <h2 id="confirm-dialog-title" className="text-lg font-semibold text-[var(--lv-heading)]">
           {title}
         </h2>
@@ -55,6 +72,7 @@ export function ConfirmDialog({
           </PressableButton>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

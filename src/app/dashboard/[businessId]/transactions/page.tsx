@@ -173,6 +173,38 @@ export default function TransactionsPage({
     [dates, rawRows],
   );
 
+  const restaurantTotalsSum = useMemo(
+    () =>
+      summariesRestaurant.reduce(
+        (acc, row) => ({
+          cash: acc.cash + row.cash,
+          bank: acc.bank + row.bank,
+          purchases: acc.purchases + row.purchases,
+          expenses: acc.expenses + row.expenses,
+          profit: acc.profit + row.profit,
+        }),
+        { cash: 0, bank: 0, purchases: 0, expenses: 0, profit: 0 },
+      ),
+    [summariesRestaurant],
+  );
+
+  const mobileTotalsSum = useMemo(
+    () =>
+      summariesMobile.reduce(
+        (acc, row) => ({
+          phoneSales: acc.phoneSales + row.phoneSales,
+          phoneProfit: acc.phoneProfit + row.phoneProfit,
+          simSales: acc.simSales + row.simSales,
+          repairs: acc.repairs + row.repairs,
+          purchases: acc.purchases + row.purchases,
+          expenses: acc.expenses + row.expenses,
+          profit: acc.profit + row.profit,
+        }),
+        { phoneSales: 0, phoneProfit: 0, simSales: 0, repairs: 0, purchases: 0, expenses: 0, profit: 0 },
+      ),
+    [summariesMobile],
+  );
+
   const runDeleteDay = async (date: string) => {
     setDeletingDate(date);
     setError("");
@@ -412,6 +444,33 @@ export default function TransactionsPage({
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_75%,transparent)] text-[var(--lv-heading)]">
+                <th scope="row" className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-[var(--lv-accent)]">
+                  Total
+                </th>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold">{formatCurrency(restaurantTotalsSum.cash)}</td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold">{formatCurrency(restaurantTotalsSum.bank)}</td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(restaurantTotalsSum.purchases)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(restaurantTotalsSum.expenses)}
+                </td>
+                <td
+                  className={`whitespace-nowrap px-4 py-3.5 text-right text-base font-bold tracking-tight ${
+                    restaurantTotalsSum.profit > 0
+                      ? "text-[var(--lv-traffic-positive)]"
+                      : restaurantTotalsSum.profit < 0
+                        ? "text-[var(--lv-traffic-critical)]"
+                        : "text-[var(--lv-traffic-neutral)]"
+                  }`}
+                >
+                  {formatCurrency(restaurantTotalsSum.profit)}
+                </td>
+                <td className="px-4 py-3.5" aria-hidden />
+              </tr>
+            </tfoot>
           </table>
         </div>
       ) : (
@@ -492,6 +551,41 @@ export default function TransactionsPage({
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_75%,transparent)] text-[var(--lv-heading)]">
+                <th scope="row" className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-[var(--lv-accent)]">
+                  Total
+                </th>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold">{formatCurrency(mobileTotalsSum.phoneSales)}</td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(mobileTotalsSum.phoneProfit)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(mobileTotalsSum.simSales)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(mobileTotalsSum.repairs)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(mobileTotalsSum.purchases)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(mobileTotalsSum.expenses)}
+                </td>
+                <td
+                  className={`whitespace-nowrap px-4 py-3.5 text-right text-base font-bold tracking-tight ${
+                    mobileTotalsSum.profit > 0
+                      ? "text-[var(--lv-traffic-positive)]"
+                      : mobileTotalsSum.profit < 0
+                        ? "text-[var(--lv-traffic-critical)]"
+                        : "text-[var(--lv-traffic-neutral)]"
+                  }`}
+                >
+                  {formatCurrency(mobileTotalsSum.profit)}
+                </td>
+                <td className="px-4 py-3.5" aria-hidden />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

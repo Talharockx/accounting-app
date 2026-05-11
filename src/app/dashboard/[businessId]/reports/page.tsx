@@ -15,6 +15,7 @@ import {
   businessTypeLabel,
   downloadMonthlyReportPdf,
 } from "@/lib/reports/monthly-report-pdf";
+import { collectDailyEntryNotes } from "@/lib/reports/period-notes";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import {
   addCalendarDaysISO,
@@ -29,6 +30,7 @@ import {
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
+import { PressableButton } from "@/components/ui/pressable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils/cn";
 
@@ -190,7 +192,9 @@ export default function ReportsPage({
   const businessType = business?.business_type ?? "restaurant";
 
   const monthlyTotals = useMemo(() => {
-    if (!monthRange) return { sales: 0, expenses: 0, profit: 0 };
+    if (!monthRange) {
+      return { sales: 0, purchases: 0, operatingExpenses: 0, expenses: 0, profit: 0 };
+    }
     return monthlyTotalsForRange(businessType, transactions, monthRange.start, monthRange.end);
   }, [businessType, monthRange, transactions]);
 
@@ -237,6 +241,7 @@ export default function ReportsPage({
       const days = eachISODateInclusive(monthRange.start, monthRange.end);
       const dailyRows = buildDailySeries(businessType, transactions, days);
       const totals = monthlyTotalsForRange(businessType, transactions, monthRange.start, monthRange.end);
+      const monthNotes = collectDailyEntryNotes(transactions, monthRange.start, monthRange.end);
       await downloadMonthlyReportPdf({
         businessName: business.name,
         dateRangeLabel: `${monthRange.start} → ${monthRange.end}`,
@@ -244,6 +249,9 @@ export default function ReportsPage({
         periodTitle: calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex),
         dailyRows,
         totals,
+        salesVsExpensesChart: salesVsExpensesData,
+        profitTrendChart: profitTrendData,
+        monthNotes,
       });
       setPdfMessage("PDF report downloaded.");
       toast.success("Monthly report downloaded.");
@@ -293,10 +301,6 @@ export default function ReportsPage({
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
               Performance & exports
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
-              Visual trends and monthly totals follow the same daily-entry rules as the rest of your dashboard. Pick
-              any month to review history on desktop or mobile.
-            </p>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">
             <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor="report-month">
@@ -326,22 +330,16 @@ export default function ReportsPage({
           <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
             {txLoading || txError ? "—" : currency(monthlyTotals.sales)}
           </p>
-          <p className="mt-3 text-xs text-[var(--lv-muted-strong)] opacity-80 transition-opacity group-hover/lv-bento:opacity-100">
-            {calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)}
-          </p>
         </BentoCell>
         <BentoCell className="p-6">
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
-            Monthly expenses
+            Operating expenses
           </p>
           <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
-            {txLoading || txError ? "—" : currency(monthlyTotals.expenses)}
-          </p>
-          <p className="pointer-events-none mt-3 max-h-0 overflow-hidden text-xs leading-relaxed text-[var(--lv-muted-strong)] opacity-0 transition-[max-height,opacity] duration-300 group-hover/lv-bento:max-h-24 group-hover/lv-bento:opacity-100">
-            Purchases + operating expenses for restaurants; inventory + overhead envelopes for mobile retail.
+            {txLoading || txError ? "—" : currency(monthlyTotals.operatingExpenses)}
           </p>
         </BentoCell>
-        <BentoCell featured className="p-6 sm:min-h-[160px]">
+        <BentoCell featured className="p-6">
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-accent)]">
             Net profit
           </p>
@@ -355,37 +353,35 @@ export default function ReportsPage({
           >
             {txLoading || txError ? "—" : currency(monthlyTotals.profit)}
           </p>
-          <p className="mt-3 text-xs text-[var(--lv-muted-strong)]">
-            Sales + repair income − expenses for the full month.
-          </p>
         </BentoCell>
       </section>
 
       <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-[var(--lv-heading)]">Performance trends</h2>
-            <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-              Bar comparison uses the last 30 days ending on{" "}
-              <span className="lv-tabular-mono font-medium text-[var(--lv-heading)]">{chartFetchRange.barEnd}</span>{" "}
-              (aligned with your chosen month). The profit line spans the selected month through today where applicable.
-            </p>
-          </div>
-          <button
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-bold tracking-tight text-[var(--lv-heading)]">Performance trends</h2>
+          <PressableButton
             type="button"
+            variant="primary"
             disabled={pdfBusy || txLoading}
             onClick={() => void handleDownloadPdf()}
-            className="glass-panel inline-flex shrink-0 items-center justify-center gap-2 rounded-[1rem] bg-gradient-to-r from-cyan-400/95 to-[color-mix(in_srgb,var(--lv-accent)_88%,cyan)] px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-[var(--lv-bento-shadow)] transition-[transform,box-shadow] hover:scale-[1.02] hover:shadow-[var(--lv-bento-shadow-hover)] disabled:cursor-not-allowed disabled:bg-slate-500/40 disabled:text-slate-700 disabled:shadow-none disabled:hover:scale-100 dark:disabled:bg-slate-600/50 dark:disabled:text-slate-300 dark:text-slate-950"
+            className={cn(
+              "min-h-12 shrink-0 gap-2 rounded-[1rem] px-5 shadow-[var(--lv-bento-shadow)] transition-[transform,box-shadow]",
+              "bg-gradient-to-r from-cyan-400/95 to-[color-mix(in_srgb,var(--lv-accent)_72%,#0e7490)]",
+              "hover:scale-[1.02] hover:shadow-[var(--lv-bento-shadow-hover)] disabled:hover:scale-100",
+            )}
           >
             {pdfBusy ? (
               <>
-                <span className="size-4 animate-spin rounded-full border-2 border-white/35 border-t-slate-900" aria-hidden />
+                <span
+                  className="size-4 animate-spin rounded-full border-2 border-[#080b11]/25 border-t-[#080b11]"
+                  aria-hidden
+                />
                 Generating PDF…
               </>
             ) : (
               "Download monthly report (PDF)"
             )}
-          </button>
+          </PressableButton>
         </div>
         {(pdfMessage || pdfError) && (
           <p
