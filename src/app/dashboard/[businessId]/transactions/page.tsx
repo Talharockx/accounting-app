@@ -7,16 +7,31 @@ import {
   buildMobileDailyRows,
   buildRestaurantDailyRows,
   getMetadata,
+  mergeSaleBuyNamedLines,
+  merchFormStringsToSaleBuy,
   metaString,
+  mobileProfitFromTransactions,
+  parseMobileDailyFromTransactions,
   parseNonNegative,
   summarizeMobileDay,
   summarizeRestaurantDay,
 } from "@/lib/dashboard/daily-entry";
 import {
+  MerchNamedBlock,
+  NamedLinesOnly,
+  useMerchListHelpers,
+  useNamedListHelpers,
+  type MerchRowStr,
+  type NamedRowStr,
+} from "@/components/dashboard/mobile-shop-fields";
+import {
   insertTransactionsWithMetadataFallback,
   selectWithMetadataColumnFallback,
 } from "@/lib/dashboard/transaction-metadata-fallback";
 import { getUserFriendlyError } from "@/lib/errors";
+import { getMonthBoundariesISO, parseMonthInputValue, toMonthInputValue } from "@/lib/utils/date-range";
+import { formatCurrency } from "@/lib/utils/formatters";
+import { isBlankNote } from "@/lib/utils/rich-text";
 import type { TransactionListRow } from "@/lib/supabase/map-transactions";
 import { mapTransactionListRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
@@ -46,22 +61,27 @@ type MobileEdit = {
   kind: "mobile_shop";
   originalDate: string;
   date: string;
-  phoneSalesTotal: string;
-  vodafone: string;
-  wind: string;
-  repairs: string;
-  purchases: string;
-  expenses: string;
+  simBuy: string;
+  simSale: string;
+  mobileMerch: MerchRowStr[];
+  accessoryMerch: MerchRowStr[];
+  packageRWind: string;
+  packageRVoda: string;
+  repairs: NamedRowStr[];
+  extras: NamedRowStr[];
+  posSale: string;
+  notes: string;
+  cashExpenses: NamedRowStr[];
+  bankExpenses: NamedRowStr[];
 };
 
 type DayEdit = RestaurantEdit | MobileEdit;
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value);
+function calendarMonthHeading(year: number, monthIndex: number): string {
+  return new Date(year, monthIndex, 15).toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function extractRestaurantNotes(rows: TransactionRow[]): string {
@@ -72,7 +92,7 @@ function extractRestaurantNotes(rows: TransactionRow[]): string {
       metaString(meta, "line") === "daily_notes"
     ) {
       const noteValue = typeof meta["notes"] === "string" ? meta["notes"] : "";
-      if (noteValue.trim().length > 0) return noteValue;
+      if (!isBlankNote(noteValue)) return noteValue;
     }
   }
   return "";
@@ -93,8 +113,34 @@ export default function TransactionsPage({
   const [deletingDate, setDeletingDate] = useState<string | null>(null);
   const [pendingDeleteDate, setPendingDeleteDate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [monthInput, setMonthInput] = useState(() =>
+    toMonthInputValue(new Date().getFullYear(), new Date().getMonth()),
+  );
 
-  const loadData = useCallback(async (bid: string) => {
+  const namedListHelpers = useNamedListHelpers();
+  const merchListHelpers = useMerchListHelpers();
+
+  const mobileEditHasAmount = (m: MobileEdit) => {
+    const sumNamed = (list: NamedRowStr[]) => list.reduce((acc, row) => acc + parseNonNegative(row.amount), 0);
+    const sumMerch = (list: MerchRowStr[]) =>
+      list.reduce((acc, row) => acc + parseNonNegative(row.retail) + parseNonNegative(row.buy), 0);
+    const hasMoney =
+      parseNonNegative(m.simBuy) +
+        parseNonNegative(m.simSale) +
+        sumMerch(m.mobileMerch) +
+        sumMerch(m.accessoryMerch) +
+        parseNonNegative(m.packageRWind) +
+        parseNonNegative(m.packageRVoda) +
+        sumNamed(m.repairs) +
+        sumNamed(m.extras) +
+        parseNonNegative(m.posSale) +
+        sumNamed(m.cashExpenses) +
+        sumNamed(m.bankExpenses) >
+      0;
+    return hasMoney || !isBlankNote(m.notes);
+  };
+
+  const loadData = useCallback(async (bid: string, monthYYYYMM: string) => {
     setLoading(true);
     setError("");
     try {
@@ -118,19 +164,32 @@ export default function TransactionsPage({
       } = await supabase.auth.getUser();
       setUserId(user?.id ?? "");
 
+      let parsed = parseMonthInputValue(monthYYYYMM);
+      if (!parsed) {
+        const now = new Date();
+        parsed = { year: now.getFullYear(), monthIndex: now.getMonth() };
+      }
+      const { start: monthStart, end: monthEnd } = getMonthBoundariesISO(parsed.year, parsed.monthIndex);
+
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>
           await supabase
             .from("transactions")
             .select("id, business_id, transaction_date, transaction_type, description, amount, metadata")
             .eq("business_id", bid)
-            .order("transaction_date", { ascending: false }),
+            .gte("transaction_date", monthStart)
+            .lte("transaction_date", monthEnd)
+            .order("transaction_date", { ascending: false })
+            .limit(20_000),
         async () =>
           await supabase
             .from("transactions")
             .select("id, business_id, transaction_date, transaction_type, description, amount")
             .eq("business_id", bid)
-            .order("transaction_date", { ascending: false }),
+            .gte("transaction_date", monthStart)
+            .lte("transaction_date", monthEnd)
+            .order("transaction_date", { ascending: false })
+            .limit(20_000),
       );
 
       if (fetchError) {
@@ -149,13 +208,28 @@ export default function TransactionsPage({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const resolved = await params;
       const bid = resolved.businessId;
+      if (cancelled) return;
       setBusinessId(bid);
-      await loadData(bid);
     })();
-  }, [params, loadData]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!businessId) return;
+    const id = window.setTimeout(() => void loadData(businessId, monthInput), 0);
+    return () => window.clearTimeout(id);
+  }, [businessId, monthInput, loadData]);
+
+  const parsedMonth = useMemo(() => parseMonthInputValue(monthInput), [monthInput]);
+  const monthHeading =
+    parsedMonth !== null ? calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex) : monthInput;
+  const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
 
   const dates = useMemo(() => {
     const set = new Set<string>();
@@ -188,22 +262,8 @@ export default function TransactionsPage({
     [summariesRestaurant],
   );
 
-  const mobileTotalsSum = useMemo(
-    () =>
-      summariesMobile.reduce(
-        (acc, row) => ({
-          phoneSales: acc.phoneSales + row.phoneSales,
-          phoneProfit: acc.phoneProfit + row.phoneProfit,
-          simSales: acc.simSales + row.simSales,
-          repairs: acc.repairs + row.repairs,
-          purchases: acc.purchases + row.purchases,
-          expenses: acc.expenses + row.expenses,
-          profit: acc.profit + row.profit,
-        }),
-        { phoneSales: 0, phoneProfit: 0, simSales: 0, repairs: 0, purchases: 0, expenses: 0, profit: 0 },
-      ),
-    [summariesMobile],
-  );
+  /** One aggregate over the month — identical to Overview when the date range is the same calendar month. */
+  const monthMobileAggregate = useMemo(() => mobileProfitFromTransactions(rawRows), [rawRows]);
 
   const runDeleteDay = async (date: string) => {
     setDeletingDate(date);
@@ -222,7 +282,7 @@ export default function TransactionsPage({
       return;
     }
     toast.success(`All entries for ${date} were deleted.`);
-    await loadData(businessId);
+    await loadData(businessId, monthInput);
   };
 
   const handleSaveDayEdit = async (event: FormEvent<HTMLFormElement>) => {
@@ -234,6 +294,12 @@ export default function TransactionsPage({
 
     setSaving(true);
     setError("");
+
+    if (editing.kind === "mobile_shop" && !mobileEditHasAmount(editing)) {
+      toast.error("Add at least one amount or a note before saving.");
+      setSaving(false);
+      return;
+    }
 
     const { originalDate, date: targetDate } = editing;
 
@@ -267,22 +333,36 @@ export default function TransactionsPage({
           if (insertError) throw insertError;
         }
       } else {
+        const m = editing;
+        const toLines = (list: NamedRowStr[]) =>
+          list
+            .map((r) => ({
+              item_name: r.itemName,
+              amount: parseNonNegative(r.amount),
+            }))
+            .filter((r) => r.amount > 0);
+
+        const { sales: mobile_sales, buys: mobile_buys } = merchFormStringsToSaleBuy(m.mobileMerch);
+        const { sales: accessory_sales, buys: accessory_buys } = merchFormStringsToSaleBuy(m.accessoryMerch);
+
         const rows = buildMobileDailyRows({
           business_id: businessId,
           created_by_user_id: userId,
           transaction_date: targetDate,
-          phones: [
-            {
-              item_name: "",
-              selling_price: parseNonNegative(editing.phoneSalesTotal),
-              profit: 0,
-            },
-          ],
-          sim_vodafone: parseNonNegative(editing.vodafone),
-          sim_wind: parseNonNegative(editing.wind),
-          repair_income: parseNonNegative(editing.repairs),
-          purchases: parseNonNegative(editing.purchases),
-          expenses: parseNonNegative(editing.expenses),
+          sim_buy: parseNonNegative(m.simBuy),
+          sim_sale: parseNonNegative(m.simSale),
+          mobile_sales,
+          mobile_buys,
+          accessory_sales,
+          accessory_buys,
+          package_r_wind: parseNonNegative(m.packageRWind),
+          package_r_voda: parseNonNegative(m.packageRVoda),
+          repairs: toLines(m.repairs),
+          extras: toLines(m.extras),
+          pos_sale: parseNonNegative(m.posSale),
+          notes: m.notes,
+          cash_expenses: toLines(m.cashExpenses),
+          bank_expenses: toLines(m.bankExpenses),
         });
 
         if (rows.length) {
@@ -293,12 +373,12 @@ export default function TransactionsPage({
 
       setEditing(null);
       toast.success("Day updated.");
-      await loadData(businessId);
+      await loadData(businessId, monthInput);
     } catch (caughtError) {
       const err = getUserFriendlyError(caughtError, "Unable to save changes.");
       setError(err);
       toast.error(err);
-      await loadData(businessId);
+      await loadData(businessId, monthInput);
     }
 
     setSaving(false);
@@ -319,32 +399,41 @@ export default function TransactionsPage({
   };
 
   const openEditMobile = (row: MobileTotals) => {
-    const dayRows = rawRows.filter((item) => item.transaction_date === row.date);
-
-    let vod = "";
-    let wind = "";
-    const simRow = dayRows.find((line) => metaString(getMetadata(line.metadata, line.description), "line") === "sim_sales");
-
-    if (simRow) {
-      const meta = getMetadata(simRow.metadata, simRow.description);
-      if (typeof meta["vodafone"] === "number") vod = String(meta["vodafone"]);
-      if (typeof meta["wind"] === "number") wind = String(meta["wind"]);
-    }
-
-    if ((!vod || vod === "0") && (!wind || wind === "0") && row.simSales > 0) {
-      wind = String(row.simSales);
-    }
+    const dayMeta = rawRows
+      .filter((item) => item.transaction_date === row.date)
+      .map((r) => ({
+        amount: r.amount,
+        transaction_type: r.transaction_type,
+        description: r.description,
+        transaction_date: r.transaction_date,
+        metadata: r.metadata,
+      }));
+    const d = parseMobileDailyFromTransactions(dayMeta, row.date);
+    const mapLines = (lines: { item_name: string; amount: number }[]) =>
+      lines.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }));
+    const mapMerch = (sales: typeof d.mobile_sales, buys: typeof d.mobile_buys) =>
+      mergeSaleBuyNamedLines(sales, buys).map((r) => ({
+        itemName: r.item_name,
+        retail: String(r.retail),
+        buy: String(r.buy),
+      }));
 
     setEditing({
       kind: "mobile_shop",
       originalDate: row.date,
       date: row.date,
-      phoneSalesTotal: String(row.phoneSales || 0),
-      vodafone: vod || "0",
-      wind: wind || "0",
-      repairs: String(row.repairs || 0),
-      purchases: String(row.purchases || 0),
-      expenses: String(row.expenses || 0),
+      simBuy: String(d.sim_buy),
+      simSale: String(d.sim_sale),
+      mobileMerch: mapMerch(d.mobile_sales, d.mobile_buys),
+      accessoryMerch: mapMerch(d.accessory_sales, d.accessory_buys),
+      packageRWind: String(d.package_r_wind),
+      packageRVoda: String(d.package_r_voda),
+      repairs: mapLines(d.repairs),
+      extras: mapLines(d.extras),
+      posSale: String(d.pos_sale),
+      notes: d.notes ?? "",
+      cashExpenses: mapLines(d.cash_expenses),
+      bankExpenses: mapLines(d.bank_expenses),
     });
   };
 
@@ -356,9 +445,24 @@ export default function TransactionsPage({
         </p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">Transactions</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
-          Consolidated snapshots per calendar day derived from structured Daily Entry records. Numeric columns use
-          monospace tabular alignment for faster reconciliation.
+          Day-by-day totals for the month you select below, compiled from saved Daily Entry. Figures are shown in euros
+          with aligned numerals for quick review and reconciliation.
         </p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="transactions-month" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
+              Month
+            </label>
+            <input
+              id="transactions-month"
+              type="month"
+              max={maxMonthInput}
+              value={monthInput}
+              onChange={(e) => setMonthInput(e.target.value)}
+              className="lv-input max-w-[12rem] rounded-xl"
+            />
+          </div>
+        </div>
       </div>
 
       {error ? (
@@ -371,8 +475,9 @@ export default function TransactionsPage({
         <p className="text-sm text-[var(--lv-muted-strong)]">Loading records…</p>
       ) : rawRows.length === 0 ? (
         <p className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
-          No transactions yet. Use{" "}
-          <strong className="font-semibold text-[var(--lv-heading)]">Daily Entry</strong> to add records.
+          No transactions in <span className="font-semibold text-[var(--lv-heading)]">{monthHeading}</span>. Choose
+          another month above, or use{" "}
+          <strong className="font-semibold text-[var(--lv-heading)]">Daily Entry</strong> to add records for this month.
         </p>
       ) : businessType === "restaurant" ? (
         <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] backdrop-blur-3xl shadow-[var(--lv-bento-shadow)]">
@@ -475,17 +580,22 @@ export default function TransactionsPage({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] backdrop-blur-3xl shadow-[var(--lv-bento-shadow)]">
-          <table className="lv-tabular-mono w-full min-w-[1040px] text-left text-sm">
+          <table className="lv-tabular-mono w-full min-w-[1580px] text-left text-sm">
             <thead>
               <tr className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">
                 <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 text-right font-medium">Phones (rev)</th>
-                <th className="px-4 py-3 text-right font-medium">Margin</th>
-                <th className="px-4 py-3 text-right font-medium">SIM</th>
+                <th className="px-4 py-3 text-right font-medium">Total sale</th>
+                <th className="px-4 py-3 text-right font-medium">SIM sale</th>
+                <th className="px-4 py-3 text-right font-medium">SIM buy</th>
+                <th className="px-4 py-3 text-right font-medium">Pkgs</th>
                 <th className="px-4 py-3 text-right font-medium">Repairs</th>
+                <th className="px-4 py-3 text-right font-medium">Extras</th>
+                <th className="px-4 py-3 text-right font-medium">POS</th>
                 <th className="px-4 py-3 text-right font-medium">Purchases</th>
-                <th className="px-4 py-3 text-right font-medium">Expenses</th>
-                <th className="px-4 py-3 text-right font-medium">Profit</th>
+                <th className="px-4 py-3 text-right font-medium">Cash exp</th>
+                <th className="px-4 py-3 text-right font-medium">Bank exp</th>
+                <th className="px-4 py-3 text-right font-medium">Last balance</th>
+                <th className="px-4 py-3 text-right font-medium">Last bal. + bank</th>
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
@@ -496,34 +606,57 @@ export default function TransactionsPage({
                   className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_35%,transparent)] text-[var(--lv-heading)] last:border-0 hover:bg-[color-mix(in_srgb,var(--lv-accent)_05%,transparent)]"
                 >
                   <td className="whitespace-nowrap px-4 py-3 text-[var(--lv-muted-strong)]">{row.date}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    {formatCurrency(row.phoneSales)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.phoneProfit)}
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-[var(--lv-heading)]">
+                    {formatCurrency(row.totalSaleSheet)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.simSales)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
+                    {formatCurrency(row.simBuy)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
+                    {formatCurrency(row.packageSales)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.repairs)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
+                    {formatCurrency(row.extras)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
+                    {formatCurrency(row.posSales)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
                     {formatCurrency(row.purchases)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.expenses)}
+                    {formatCurrency(row.cashExpenses)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
+                    {formatCurrency(row.bankExpenses)}
                   </td>
                   <td
                     className={`whitespace-nowrap px-4 py-3 text-right font-semibold tracking-tight ${
-                      row.profit > 0
+                      row.lastBalance > 0
                         ? "text-[var(--lv-traffic-positive)]"
-                        : row.profit < 0
+                        : row.lastBalance < 0
                           ? "text-[var(--lv-traffic-critical)]"
                           : "text-[var(--lv-traffic-neutral)]"
                     }`}
                   >
-                    {formatCurrency(row.profit)}
+                    {formatCurrency(row.lastBalance)}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold tracking-tight ${
+                      row.lastBalanceWithBank > 0
+                        ? "text-[var(--lv-traffic-positive)]"
+                        : row.lastBalanceWithBank < 0
+                          ? "text-[var(--lv-traffic-critical)]"
+                          : "text-[var(--lv-traffic-neutral)]"
+                    }`}
+                  >
+                    {formatCurrency(row.lastBalanceWithBank)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -556,32 +689,57 @@ export default function TransactionsPage({
                 <th scope="row" className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-[var(--lv-accent)]">
                   Total
                 </th>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold">{formatCurrency(mobileTotalsSum.phoneSales)}</td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(mobileTotalsSum.phoneProfit)}
+                <td className="whitespace-nowrap px-4 py-3.5 text-right text-base font-bold text-[var(--lv-heading)]">
+                  {formatCurrency(monthMobileAggregate.totalSaleSheet)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(mobileTotalsSum.simSales)}
+                  {formatCurrency(monthMobileAggregate.simSales)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(mobileTotalsSum.repairs)}
+                  {formatCurrency(monthMobileAggregate.simBuy)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(mobileTotalsSum.purchases)}
+                  {formatCurrency(monthMobileAggregate.packageSales)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(mobileTotalsSum.expenses)}
+                  {formatCurrency(monthMobileAggregate.repairs)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(monthMobileAggregate.extras)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(monthMobileAggregate.posSales)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(monthMobileAggregate.purchases)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(monthMobileAggregate.cashExpenses)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
+                  {formatCurrency(monthMobileAggregate.bankExpenses)}
                 </td>
                 <td
                   className={`whitespace-nowrap px-4 py-3.5 text-right text-base font-bold tracking-tight ${
-                    mobileTotalsSum.profit > 0
+                    monthMobileAggregate.lastBalance > 0
                       ? "text-[var(--lv-traffic-positive)]"
-                      : mobileTotalsSum.profit < 0
+                      : monthMobileAggregate.lastBalance < 0
                         ? "text-[var(--lv-traffic-critical)]"
                         : "text-[var(--lv-traffic-neutral)]"
                   }`}
                 >
-                  {formatCurrency(mobileTotalsSum.profit)}
+                  {formatCurrency(monthMobileAggregate.lastBalance)}
+                </td>
+                <td
+                  className={`whitespace-nowrap px-4 py-3.5 text-right text-base font-bold tracking-tight ${
+                    monthMobileAggregate.lastBalanceWithBank > 0
+                      ? "text-[var(--lv-traffic-positive)]"
+                      : monthMobileAggregate.lastBalanceWithBank < 0
+                        ? "text-[var(--lv-traffic-critical)]"
+                        : "text-[var(--lv-traffic-neutral)]"
+                  }`}
+                >
+                  {formatCurrency(monthMobileAggregate.lastBalanceWithBank)}
                 </td>
                 <td className="px-4 py-3.5" aria-hidden />
               </tr>
@@ -652,9 +810,10 @@ export default function TransactionsPage({
               <MidnightField
                 id="edit-r-notes"
                 label="Notes"
-                rows={3}
+                rows={4}
                 value={editing.notes}
                 onChange={(event) => setEditing({ ...editing, notes: event.target.value })}
+                disabled={saving}
               />
               <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <PressableButton type="button" variant="secondary" className="min-h-12 w-full sm:w-auto" onClick={() => setEditing(null)}>
@@ -678,17 +837,16 @@ export default function TransactionsPage({
           onClick={() => setEditing(null)}
         >
           <div
-            className="w-full max-w-md cursor-default rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl backdrop-blur-md"
+            className="max-h-[90vh] w-full max-w-2xl cursor-default overflow-y-auto rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl backdrop-blur-md"
             onClick={(event) => event.stopPropagation()}
           >
             <h2 id="edit-day-title-mobile" className="text-lg font-semibold text-[var(--lv-heading)]">
               Edit daily entry ({editing.originalDate})
             </h2>
-            <p className="mt-2 text-xs text-slate-400">
-              Handset detail is preserved when metadata exists. Otherwise phone totals save as a single
-              consolidated line.
+            <p className="mt-2 text-xs text-[var(--lv-muted-strong)]">
+              Same structure as Daily Entry. Saving replaces all rows for this business and date.
             </p>
-            <form className="mt-4 flex flex-col gap-4" onSubmit={handleSaveDayEdit}>
+            <form className="mt-4 flex flex-col gap-6" onSubmit={handleSaveDayEdit}>
               <Field
                 label="Entry date"
                 id="edit-m-date"
@@ -696,60 +854,210 @@ export default function TransactionsPage({
                 value={editing.date}
                 onChange={(value) => setEditing({ ...editing, date: value })}
               />
-              <Field
-                label="Phone sales (total)"
-                id="edit-m-phones"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.phoneSalesTotal}
-                onChange={(value) => setEditing({ ...editing, phoneSalesTotal: value })}
+
+              <section className="flex flex-col gap-3">
+                <h3 className="text-base font-semibold text-[var(--lv-heading)]">SIM</h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <MidnightField
+                    id="edit-m-sim-buy"
+                    label="SIM buy (shop cost)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={editing.simBuy}
+                    onChange={(e) =>
+                      setEditing((p) =>
+                        p?.kind === "mobile_shop"
+                          ? { ...p, simBuy: String(Math.max(0, parseNonNegative(e.target.value))) }
+                          : p,
+                      )
+                    }
+                  />
+                  <MidnightField
+                    id="edit-m-sim-sale"
+                    label="SIM sale (retail)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={editing.simSale}
+                    onChange={(e) =>
+                      setEditing((p) =>
+                        p?.kind === "mobile_shop"
+                          ? { ...p, simSale: String(Math.max(0, parseNonNegative(e.target.value))) }
+                          : p,
+                      )
+                    }
+                  />
+                </div>
+              </section>
+
+              <MerchNamedBlock
+                idPrefix="tx-phone"
+                title="Mobile phones"
+                hint="Each line: optional name, retail sale, and stock cost."
+                rows={editing.mobileMerch}
+                setRows={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "mobile_shop") return p;
+                    const next = typeof action === "function" ? action(p.mobileMerch) : action;
+                    return { ...p, mobileMerch: next };
+                  })
+                }
+                retailLabel="Retail (sale)"
+                buyLabel="Buy (cost)"
+                helpers={merchListHelpers}
               />
-              <Field
-                label="SIM · Vodafone"
-                id="edit-m-vod"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.vodafone}
-                onChange={(value) => setEditing({ ...editing, vodafone: value })}
+
+              <MerchNamedBlock
+                idPrefix="tx-acc"
+                title="Accessories"
+                hint="Each line: optional name, retail sale, and purchase cost."
+                rows={editing.accessoryMerch}
+                setRows={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "mobile_shop") return p;
+                    const next = typeof action === "function" ? action(p.accessoryMerch) : action;
+                    return { ...p, accessoryMerch: next };
+                  })
+                }
+                retailLabel="Retail (sale)"
+                buyLabel="Buy (cost)"
+                helpers={merchListHelpers}
               />
-              <Field
-                label="SIM · Wind"
-                id="edit-m-wind"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.wind}
-                onChange={(value) => setEditing({ ...editing, wind: value })}
+
+              <section className="flex flex-col gap-3">
+                <h3 className="text-base font-semibold text-[var(--lv-heading)]">Packages sale</h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <MidnightField
+                    id="edit-m-pkg-w"
+                    label="R.Wind"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={editing.packageRWind}
+                    onChange={(e) =>
+                      setEditing((p) =>
+                        p?.kind === "mobile_shop"
+                          ? { ...p, packageRWind: String(Math.max(0, parseNonNegative(e.target.value))) }
+                          : p,
+                      )
+                    }
+                  />
+                  <MidnightField
+                    id="edit-m-pkg-v"
+                    label="R.Voda"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={editing.packageRVoda}
+                    onChange={(e) =>
+                      setEditing((p) =>
+                        p?.kind === "mobile_shop"
+                          ? { ...p, packageRVoda: String(Math.max(0, parseNonNegative(e.target.value))) }
+                          : p,
+                      )
+                    }
+                  />
+                </div>
+              </section>
+
+              <NamedLinesOnly
+                idPrefix="tx-repair"
+                title="Repairs"
+                hint="Label + amount per job."
+                rows={editing.repairs}
+                setRows={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "mobile_shop") return p;
+                    const next = typeof action === "function" ? action(p.repairs) : action;
+                    return { ...p, repairs: next };
+                  })
+                }
+                helpers={namedListHelpers}
               />
-              <Field
-                label="Repair income"
-                id="edit-m-repairs"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.repairs}
-                onChange={(value) => setEditing({ ...editing, repairs: value })}
+
+              <NamedLinesOnly
+                idPrefix="tx-extra"
+                title="Extras"
+                hint="Other named income."
+                rows={editing.extras}
+                setRows={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "mobile_shop") return p;
+                    const next = typeof action === "function" ? action(p.extras) : action;
+                    return { ...p, extras: next };
+                  })
+                }
+                helpers={namedListHelpers}
               />
-              <Field
-                label="Purchases"
-                id="edit-m-purch"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.purchases}
-                onChange={(value) => setEditing({ ...editing, purchases: value })}
+
+              <section className="flex flex-col gap-3">
+                <h3 className="text-base font-semibold text-[var(--lv-heading)]">POS</h3>
+                <MidnightField
+                  id="edit-m-pos"
+                  label="POS (card) sales"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={editing.posSale}
+                  onChange={(e) =>
+                    setEditing((p) =>
+                      p?.kind === "mobile_shop"
+                        ? { ...p, posSale: String(Math.max(0, parseNonNegative(e.target.value))) }
+                        : p,
+                    )
+                  }
+                />
+              </section>
+
+              <NamedLinesOnly
+                idPrefix="tx-exp-cash"
+                title="Cash expenses"
+                hint="Detail + amount per cash payment."
+                rows={editing.cashExpenses}
+                setRows={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "mobile_shop") return p;
+                    const next = typeof action === "function" ? action(p.cashExpenses) : action;
+                    return { ...p, cashExpenses: next };
+                  })
+                }
+                helpers={namedListHelpers}
+                nameFieldLabel="Detail"
               />
-              <Field
-                label="Expenses"
-                id="edit-m-exp"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.expenses}
-                onChange={(value) => setEditing({ ...editing, expenses: value })}
+
+              <NamedLinesOnly
+                idPrefix="tx-exp-bank"
+                title="Bank expenses"
+                hint="Detail + amount per bank/card payment."
+                rows={editing.bankExpenses}
+                setRows={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "mobile_shop") return p;
+                    const next = typeof action === "function" ? action(p.bankExpenses) : action;
+                    return { ...p, bankExpenses: next };
+                  })
+                }
+                helpers={namedListHelpers}
+                nameFieldLabel="Detail"
               />
+
+              <MidnightField
+                id="edit-m-notes"
+                label="Day notes"
+                rows={4}
+                value={editing.notes}
+                onChange={(e) =>
+                  setEditing((p) => (p?.kind === "mobile_shop" ? { ...p, notes: e.target.value } : p))
+                }
+                disabled={saving}
+              />
+
               <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <PressableButton type="button" variant="secondary" className="min-h-12 w-full sm:w-auto" onClick={() => setEditing(null)}>
                   Cancel

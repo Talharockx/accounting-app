@@ -41,11 +41,13 @@ export function dailySalesExpensesProfit(
   const purchases = t.purchases;
   const operating = t.expenses;
   return {
-    sales: t.phoneSales + t.simSales + t.repairs,
+    /** Matches Overview “Total sale” (SIM + handsets/accessories + packages + repairs + extras; no POS). */
+    sales: t.totalSaleSheet,
     purchases,
     operatingExpenses: operating,
     expenses: purchases + operating,
-    profit: t.profit,
+    /** Mobile shop: client sheet last balance (see `mobileProfitFromTransactions`). */
+    profit: t.lastBalance,
   };
 }
 

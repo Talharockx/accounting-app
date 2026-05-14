@@ -229,3 +229,25 @@ body {
 html {
   color-scheme: dark;
 }
+
+/* Dark fields — readable native <select> menus (esp. Windows) */
+.lv-field-midnight {
+  color-scheme: dark;
+  background-color: var(--lv-card);
+  color: var(--lv-heading);
+}
+
+input.lv-field-midnight {
+  cursor: text;
+}
+
+select.lv-field-midnight {
+  cursor: pointer;
+}
+
+select.lv-field-midnight option,
+select.lv-field-midnight optgroup {
+  background-color: var(--lv-card);
+  color: var(--lv-heading);
+}
+

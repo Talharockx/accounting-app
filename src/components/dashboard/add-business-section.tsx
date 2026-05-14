@@ -11,10 +11,20 @@ export type BusinessType = "restaurant" | "mobile_shop";
 
 type AddBusinessSectionProps = {
   id?: string;
+  /** Unique prefix for field ids when two forms exist on one page. */
+  formInstanceId?: string;
   selectedType: BusinessType | null;
   onSelectType: (type: BusinessType) => void;
   businessName: string;
   onBusinessNameChange: (value: string) => void;
+  phoneNumber: string;
+  onPhoneNumberChange: (value: string) => void;
+  vatNumber: string;
+  onVatNumberChange: (value: string) => void;
+  address: string;
+  onAddressChange: (value: string) => void;
+  contactEmail: string;
+  onContactEmailChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   saving: boolean;
   title?: string;
@@ -23,15 +33,25 @@ type AddBusinessSectionProps = {
 
 export function AddBusinessSection({
   id = "add-business",
+  formInstanceId = "primary",
   selectedType,
   onSelectType,
   businessName,
   onBusinessNameChange,
+  phoneNumber,
+  onPhoneNumberChange,
+  vatNumber,
+  onVatNumberChange,
+  address,
+  onAddressChange,
+  contactEmail,
+  onContactEmailChange,
   onSubmit,
   saving,
   title = "Add a business",
   subtitle = "Choose a type, enter a name, and save.",
 }: AddBusinessSectionProps) {
+  const fid = formInstanceId;
   const typeCard = (type: BusinessType, selected: boolean) =>
     cn(
       "group/ptype min-h-[3rem] cursor-pointer touch-manipulation rounded-[1.625rem] border p-7 text-left transition-[transform,box-shadow,border-color,background-color] duration-200 active:scale-[0.99] md:p-8",
@@ -86,13 +106,50 @@ export function AddBusinessSection({
               Name your new {selectedType === "restaurant" ? "restaurant" : "mobile shop"}
             </p>
             <MidnightField
-              id="new-business-name"
+              id={`${fid}-business-name`}
               label="Business name"
               type="text"
               value={businessName}
               onChange={(e) => onBusinessNameChange(e.target.value)}
               required
               autoComplete="organization"
+            />
+            <div className="grid gap-5 sm:grid-cols-2">
+              <MidnightField
+                id={`${fid}-phone`}
+                label="Phone number"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={phoneNumber}
+                onChange={(e) => onPhoneNumberChange(e.target.value)}
+                required
+              />
+              <MidnightField
+                id={`${fid}-vat`}
+                label="VAT number"
+                type="text"
+                value={vatNumber}
+                onChange={(e) => onVatNumberChange(e.target.value)}
+                required
+              />
+            </div>
+            <MidnightField
+              id={`${fid}-address`}
+              label="Address"
+              rows={3}
+              value={address}
+              onChange={(e) => onAddressChange(e.target.value)}
+              required
+            />
+            <MidnightField
+              id={`${fid}-email`}
+              label="Email"
+              type="email"
+              autoComplete="email"
+              value={contactEmail}
+              onChange={(e) => onContactEmailChange(e.target.value)}
+              required
             />
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <PressableButton type="submit" className="min-h-12 w-full sm:min-w-[200px] sm:w-auto" disabled={saving}>

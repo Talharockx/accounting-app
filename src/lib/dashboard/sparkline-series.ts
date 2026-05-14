@@ -27,10 +27,18 @@ export type MobileSparkMetrics = {
   phoneSales: number;
   phoneProfit: number;
   simSales: number;
+  simBuy: number;
+  packageSales: number;
   repairs: number;
+  extras: number;
+  posSales: number;
+  cashExpenses: number;
+  bankExpenses: number;
   purchases: number;
   expenses: number;
   profit: number;
+  lastBalance: number;
+  lastBalanceWithBank: number;
 };
 
 export function restaurantSparkSeries(rows: TransactionWithMeta[], dates: string[]): RestaurantSparkMetrics[] {

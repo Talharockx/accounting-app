@@ -78,7 +78,7 @@ export default function BusinessDashboardLayout({
     };
 
     void initialize();
-  }, [params, router]);
+  }, []);
 
   const confirmSignOut = async () => {
     setSignOutBusy(true);

@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BentoCell } from "@/components/ui/bento-cell";
 import { PressableButton } from "@/components/ui/pressable";
 import { cn } from "@/lib/utils/cn";
+import { formatCurrency } from "@/lib/utils/formatters";
 
 type Business = {
   id: string;
@@ -43,7 +44,8 @@ export default function BusinessOverviewPage({
   const [businessLoading, setBusinessLoading] = useState(true);
   const [businessId, setBusinessId] = useState("");
   const [transactions, setTransactions] = useState<TransactionWithMeta[]>([]);
-  const [period, setPeriod] = useState<PeriodFilter>("today");
+  /** Default to month-to-date range so saved entries appear; "Today" alone hides all other days. */
+  const [period, setPeriod] = useState<PeriodFilter>("range");
   const [pickedDate, setPickedDate] = useState(() => getTodayLocalISO());
   const [rangeStart, setRangeStart] = useState(() => defaultMonthToDateRange().start);
   const [rangeEnd, setRangeEnd] = useState(() => defaultMonthToDateRange().end);
@@ -51,6 +53,7 @@ export default function BusinessOverviewPage({
   const [draftEnd, setDraftEnd] = useState(() => defaultMonthToDateRange().end);
   const [txLoading, setTxLoading] = useState(true);
   const [txError, setTxError] = useState("");
+  const [mobileBalanceView, setMobileBalanceView] = useState<"sheet" | "incl_bank">("sheet");
 
   const loadTransactions = useCallback(
     async (id: string, p: PeriodFilter, range: { start: string; end: string }, singleDay: string) => {
@@ -70,7 +73,7 @@ export default function BusinessOverviewPage({
         query = query.gte("transaction_date", lo).lte("transaction_date", hi);
       }
 
-      return query.order("transaction_date", { ascending: false });
+      return query.order("transaction_date", { ascending: false }).limit(20_000);
     };
 
     try {
@@ -83,7 +86,6 @@ export default function BusinessOverviewPage({
       if (result.error) {
         const msg = getUserFriendlyError(new Error(result.error.message));
         setTxError(msg);
-        toast.error(msg);
         setTransactions([]);
         setTxLoading(false);
         return;
@@ -93,7 +95,6 @@ export default function BusinessOverviewPage({
     } catch (caught) {
       const msg = getUserFriendlyError(caught, SYSTEM_UNAVAILABLE);
       setTxError(msg);
-      toast.error(msg);
       setTransactions([]);
     }
 
@@ -119,15 +120,14 @@ export default function BusinessOverviewPage({
           return;
         }
         setBusiness(businessData as Business);
-      } catch (caught) {
-        toast.error(getUserFriendlyError(caught));
+      } catch {
       } finally {
         setBusinessLoading(false);
       }
     };
 
     void loadBusiness();
-  }, [params]);
+  }, []);
 
   useEffect(() => {
     if (!businessId) return;
@@ -215,6 +215,8 @@ export default function BusinessOverviewPage({
   const isRestaurant = business.business_type === "restaurant";
   const restaurantTotals = restaurantProfitFromTransactions(transactions);
   const mobileTotals = mobileProfitFromTransactions(transactions);
+  const mobileDisplayedBalance =
+    mobileBalanceView === "sheet" ? mobileTotals.lastBalance : mobileTotals.lastBalanceWithBank;
 
   return (
     <section className="space-y-6">
@@ -369,36 +371,53 @@ export default function BusinessOverviewPage({
           <MetricMini label="Expenses" value={formatCurrency(restaurantTotals.expenses)} />
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-[minmax(120px,auto)]">
-          <BentoCell featured className="col-span-2 row-span-2 min-h-[260px] p-7 sm:p-8">
-            <div className="flex h-full flex-col justify-between gap-6">
-              <div>
-                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
-                  Net profit
-                </p>
-                <p
-                  className={cn(
-                    "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
-                    toneProfitNumeric(mobileTotals.profit) === "positive" && "text-[var(--lv-traffic-positive)]",
-                    toneProfitNumeric(mobileTotals.profit) === "neutral" && "text-[var(--lv-traffic-neutral)]",
-                    toneProfitNumeric(mobileTotals.profit) === "critical" && "text-[var(--lv-traffic-critical)]",
-                  )}
-                >
-                  {formatCurrency(mobileTotals.profit)}
-                </p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-min">
+            <BentoCell featured className="col-span-2 row-span-2 min-h-[260px] p-7 sm:p-8">
+              <div className="flex h-full flex-col justify-between gap-6">
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={mobileBalanceView === "sheet" ? pillActive : pillIdle}
+                      onClick={() => setMobileBalanceView("sheet")}
+                    >
+                      Sheet (cash exp.)
+                    </button>
+                    <button
+                      type="button"
+                      className={mobileBalanceView === "incl_bank" ? pillActive : pillIdle}
+                      onClick={() => setMobileBalanceView("incl_bank")}
+                    >
+                      Cash + bank
+                    </button>
+                  </div>
+                  <p className="mt-4 text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+                    Last balance
+                  </p>
+                  <p
+                    className={cn(
+                      "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
+                      toneProfitNumeric(mobileDisplayedBalance) === "positive" && "text-[var(--lv-traffic-positive)]",
+                      toneProfitNumeric(mobileDisplayedBalance) === "neutral" && "text-[var(--lv-traffic-neutral)]",
+                      toneProfitNumeric(mobileDisplayedBalance) === "critical" && "text-[var(--lv-traffic-critical)]",
+                    )}
+                  >
+                    {formatCurrency(mobileDisplayedBalance)}
+                  </p>
+                </div>
+                <div className="flex items-end">
+                  <NetProfitArrow profit={mobileDisplayedBalance} />
+                </div>
               </div>
-              <div className="flex items-end">
-                <NetProfitArrow profit={mobileTotals.profit} />
-              </div>
-            </div>
-          </BentoCell>
+            </BentoCell>
 
-          <MetricMini label="Phone revenue" value={formatCurrency(mobileTotals.phoneSales)} />
-          <MetricMini label="Phone margin" value={formatCurrency(mobileTotals.phoneProfit)} />
-          <MetricMini label="SIM sales" value={formatCurrency(mobileTotals.simSales)} />
-          <MetricMini label="Repairs" value={formatCurrency(mobileTotals.repairs)} />
-          <MetricMini label="Purchases" value={formatCurrency(mobileTotals.purchases)} className="lg:col-span-2" />
-          <MetricMini label="Expenses" value={formatCurrency(mobileTotals.expenses)} className="lg:col-span-2" />
+            <MetricMini label="Total sale" value={formatCurrency(mobileTotals.totalSaleSheet)} />
+            <MetricMini label="Total cost" value={formatCurrency(mobileTotals.purchases)} />
+            <MetricMini label="Total recharges" value={formatCurrency(mobileTotals.supplierRicarche)} />
+            <MetricMini label="Total expense" value={formatCurrency(mobileTotals.cashExpenses)} />
+            <MetricMini label="Bank expenses" value={formatCurrency(mobileTotals.bankExpenses)} />
+          </div>
         </div>
       )}
 
@@ -408,24 +427,17 @@ export default function BusinessOverviewPage({
           animate={{ opacity: 1, y: 0 }}
           className="glass-panel rounded-[1.625rem] border border-dashed border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] px-5 py-4 text-sm text-[var(--lv-muted-strong)]"
         >
-          No transactions in this window. Capture figures in{" "}
-          <span className="font-semibold text-[var(--lv-heading)]">Daily Entry</span> or widen the filters.
+          No transactions in this window. If you saved daily entries in another month, open{" "}
+          <span className="font-semibold text-[var(--lv-heading)]">Custom range</span> and set From / Through to cover
+          those dates (the default is this calendar month through today). You can also use{" "}
+          <span className="font-semibold text-[var(--lv-heading)]">Pick a date</span> for a single day.
           <span className="mt-2 block text-xs opacity-80">
-            Add entries in Daily Entry to populate this workspace.
+            Save each day in Daily Entry so rows exist in the database.
           </span>
         </motion.div>
       ) : null}
     </section>
   );
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
 }
 
 /** Net profit / loss: up when profit &gt; 0, down when &lt; 0, neutral when zero. */

@@ -16,6 +16,7 @@ import {
 } from "recharts";
 
 import type { ProfitTrendDatum, SalesVsExpensesDatum } from "@/components/dashboard/reports-performance-charts";
+import { formatCurrencyWhole } from "@/lib/utils/formatters";
 
 const PDF_BG = "#0f172a";
 const TICK = "#94a3b8";
@@ -30,11 +31,7 @@ function formatCompactMoney(value: number) {
 }
 
 function tooltipMoney(value: number) {
-  return value.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
+  return formatCurrencyWhole(value);
 }
 
 const tickProps = { fill: TICK, fontSize: 11 };

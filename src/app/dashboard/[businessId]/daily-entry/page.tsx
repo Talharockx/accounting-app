@@ -1,15 +1,16 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
-  SOURCE_MOBILE,
   SOURCE_RESTAURANT,
   buildMobileDailyRows,
   buildRestaurantDailyRows,
   getMetadata,
+  mergeSaleBuyNamedLines,
+  merchFormStringsToSaleBuy,
   metaString,
-  mobileProfitFromTransactions,
+  parseMobileDailyFromTransactions,
   parseNonNegative,
   restaurantProfitFromTransactions,
 } from "@/lib/dashboard/daily-entry";
@@ -20,9 +21,20 @@ import {
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { getTodayLocalISO } from "@/lib/utils/date-range";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  MerchNamedBlock,
+  NamedLinesOnly,
+  emptyMerch,
+  emptyNamed,
+  useMerchListHelpers,
+  useNamedListHelpers,
+  type MerchRowStr,
+  type NamedRowStr,
+} from "@/components/dashboard/mobile-shop-fields";
 import { GlassFormCard } from "@/components/ui/glass-form-card";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
+import { isBlankNote } from "@/lib/utils/rich-text";
 
 type BusinessType = "restaurant" | "mobile_shop";
 
@@ -38,44 +50,6 @@ type TxRecord = {
   transaction_date: string;
   metadata: unknown;
 };
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function summarizeRows(bt: BusinessType, rows: TxRecord[]) {
-  if (bt === "restaurant") {
-    const totals = restaurantProfitFromTransactions(rows);
-    return {
-      headline: totals.profit,
-      details: {
-        "Cash sales": formatCurrency(totals.cash),
-        "Bank sales": formatCurrency(totals.bank),
-        Purchases: formatCurrency(totals.purchases),
-        Expenses: formatCurrency(totals.expenses),
-        "Daily profit": formatCurrency(totals.profit),
-      },
-    };
-  }
-
-  const mobileTotals = mobileProfitFromTransactions(rows);
-  return {
-    headline: mobileTotals.profit,
-    details: {
-      "Phone sales (revenue)": formatCurrency(mobileTotals.phoneSales),
-      "Phone profit (margin)": formatCurrency(mobileTotals.phoneProfit),
-      "SIM sales": formatCurrency(mobileTotals.simSales),
-      Repairs: formatCurrency(mobileTotals.repairs),
-      Purchases: formatCurrency(mobileTotals.purchases),
-      Expenses: formatCurrency(mobileTotals.expenses),
-      "Daily profit": formatCurrency(mobileTotals.profit),
-    },
-  };
-}
 
 export default function DailyEntryPage({
   params,
@@ -96,15 +70,65 @@ export default function DailyEntryPage({
   const [restExpenses, setRestExpenses] = useState("0");
   const [restNotes, setRestNotes] = useState("");
 
-  const defaultPhoneRow = useMemo(() => ({ itemName: "", sellingPrice: "0", profit: "0" }), []);
-  const [phones, setPhones] = useState([{ ...defaultPhoneRow }]);
-  const [simVodafone, setSimVodafone] = useState("0");
-  const [simWind, setSimWind] = useState("0");
-  const [repairIncome, setRepairIncome] = useState("0");
-  const [mobilePurchases, setMobilePurchases] = useState("0");
-  const [mobileExpenses, setMobileExpenses] = useState("0");
+  const [simBuy, setSimBuy] = useState("0");
+  const [simSale, setSimSale] = useState("0");
+  const [mobileMerch, setMobileMerch] = useState<MerchRowStr[]>([emptyMerch()]);
+  const [accessoryMerch, setAccessoryMerch] = useState<MerchRowStr[]>([emptyMerch()]);
+  const [packageRWind, setPackageRWind] = useState("0");
+  const [packageRVoda, setPackageRVoda] = useState("0");
+  const [repairs, setRepairs] = useState<NamedRowStr[]>([emptyNamed()]);
+  const [extras, setExtras] = useState<NamedRowStr[]>([emptyNamed()]);
+  const [posSale, setPosSale] = useState("0");
+  const [mobileNotes, setMobileNotes] = useState("");
+  const [cashExpenses, setCashExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
+  const [bankExpenses, setBankExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
 
-  const [summary, setSummary] = useState<ReturnType<typeof summarizeRows> | null>(null);
+  const applyMobileDraftStrings = useCallback((draft: ReturnType<typeof parseMobileDailyFromTransactions>) => {
+    setSimBuy(String(draft.sim_buy));
+    setSimSale(String(draft.sim_sale));
+    setMobileMerch(
+      mergeSaleBuyNamedLines(draft.mobile_sales, draft.mobile_buys).map((r) => ({
+        itemName: r.item_name,
+        retail: String(r.retail),
+        buy: String(r.buy),
+      })),
+    );
+    setAccessoryMerch(
+      mergeSaleBuyNamedLines(draft.accessory_sales, draft.accessory_buys).map((r) => ({
+        itemName: r.item_name,
+        retail: String(r.retail),
+        buy: String(r.buy),
+      })),
+    );
+    setPackageRWind(String(draft.package_r_wind));
+    setPackageRVoda(String(draft.package_r_voda));
+    setRepairs(
+      draft.repairs.map((r) => ({
+        itemName: r.item_name,
+        amount: String(r.amount),
+      })),
+    );
+    setExtras(
+      draft.extras.map((r) => ({
+        itemName: r.item_name,
+        amount: String(r.amount),
+      })),
+    );
+    setPosSale(String(draft.pos_sale));
+    setMobileNotes(draft.notes ?? "");
+    setCashExpenses(
+      draft.cash_expenses.map((r) => ({
+        itemName: r.item_name,
+        amount: String(r.amount),
+      })),
+    );
+    setBankExpenses(
+      draft.bank_expenses.map((r) => ({
+        itemName: r.item_name,
+        amount: String(r.amount),
+      })),
+    );
+  }, []);
 
   const hydrateForms = useCallback(
     (bt: BusinessType, rows: TxRecord[], dateISO: string) => {
@@ -125,70 +149,17 @@ export default function DailyEntryPage({
             metaString(meta, "line") === "daily_notes"
           ) {
             const notes = typeof meta["notes"] === "string" ? (meta["notes"] as string) : "";
-            if (notes.trim().length) noteText = notes;
+            if (!isBlankNote(notes)) noteText = notes;
           }
         }
         setRestNotes(noteText);
         return;
       }
 
-      const phoneRows = dayRows.filter((row) => {
-        const meta = getMetadata(row.metadata, row.description);
-        return (
-          metaString(meta, "source") === SOURCE_MOBILE && metaString(meta, "line") === "mobile_phone_sale"
-        );
-      });
-
-      if (phoneRows.length > 0) {
-        const mapped = phoneRows.map((row, index) => {
-          const meta = getMetadata(row.metadata, row.description);
-          const name =
-            typeof meta["item_name"] === "string" ? (meta["item_name"] as string) : `Phone ${index + 1}`;
-          const profit = typeof meta["profit"] === "number" ? (meta["profit"] as number) : 0;
-          return {
-            itemName: name,
-            sellingPrice: String(Number(row.amount) || 0),
-            profit: String(Math.max(0, profit)),
-          };
-        });
-        setPhones(mapped);
-      } else {
-        setPhones([{ ...defaultPhoneRow }]);
-      }
-
-      const simRow = dayRows.find((row) => metaString(getMetadata(row.metadata, row.description), "line") === "sim_sales");
-      if (simRow) {
-        const meta = getMetadata(simRow.metadata, simRow.description);
-        const vod = typeof meta["vodafone"] === "number" ? String(meta["vodafone"]) : "0";
-        const wind = typeof meta["wind"] === "number" ? String(meta["wind"]) : "0";
-        setSimVodafone(vod);
-        setSimWind(wind);
-      } else {
-        setSimVodafone("0");
-        setSimWind("0");
-      }
-
-      let repairs = "0";
-      dayRows.forEach((row) => {
-        const meta = getMetadata(row.metadata, row.description);
-        if (metaString(meta, "line") === "repair_income") {
-          repairs = String(Number(row.amount) || 0);
-        }
-      });
-      setRepairIncome(repairs);
-
-      let purchases = "0";
-      let expenses = "0";
-      dayRows.forEach((row) => {
-        const meta = getMetadata(row.metadata, row.description);
-        const line = metaString(meta, "line");
-        if (line === "mobile_purchases") purchases = String(Number(row.amount) || 0);
-        if (line === "mobile_expenses") expenses = String(Number(row.amount) || 0);
-      });
-      setMobilePurchases(purchases);
-      setMobileExpenses(expenses);
+      const draft = parseMobileDailyFromTransactions(dayRows, dateISO);
+      applyMobileDraftStrings(draft);
     },
-    [defaultPhoneRow],
+    [applyMobileDraftStrings],
   );
 
   const loadDay = useCallback(
@@ -212,7 +183,6 @@ export default function DailyEntryPage({
 
         if (fetchError) {
           setError(getUserFriendlyError(new Error(fetchError.message)));
-          setSummary(null);
           return;
         }
 
@@ -220,11 +190,9 @@ export default function DailyEntryPage({
         if (shouldHydrate) {
           hydrateForms(bt, rows, dateISO);
         }
-        setSummary(summarizeRows(bt, rows));
       } catch (caught) {
         const msg = getUserFriendlyError(caught, SYSTEM_UNAVAILABLE);
         setError(msg);
-        setSummary(null);
       }
     },
     [hydrateForms],
@@ -282,7 +250,7 @@ export default function DailyEntryPage({
     return () => {
       cancelled = true;
     };
-  }, [params, loadDay]);
+  }, []);
 
   useEffect(() => {
     if (!businessId || loading) return;
@@ -290,17 +258,32 @@ export default function DailyEntryPage({
     return () => window.clearTimeout(id);
   }, [businessId, entryDate, businessType, loadDay, loading]);
 
-  const addPhoneRow = () =>
-    setPhones((prev) => [...prev, { itemName: "", sellingPrice: "0", profit: "0" }]);
-
-  const updatePhoneRow = (index: number, field: keyof (typeof phones)[number], value: string) =>
-    setPhones((prev) => prev.map((row, idx) => (idx === index ? { ...row, [field]: value } : row)));
-
-  const removePhoneRow = (index: number) =>
-    setPhones((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== index)));
-
   const clampInput = (value: string, setter: (next: string) => void) => {
     setter(String(Math.max(0, parseNonNegative(value))));
+  };
+
+  const namedListHelpers = useNamedListHelpers();
+  const merchListHelpers = useMerchListHelpers();
+
+  const mobileEntryHasContent = () => {
+    const sumNamed = (list: NamedRowStr[]) =>
+      list.reduce((acc, row) => acc + parseNonNegative(row.amount), 0);
+    const sumMerch = (list: MerchRowStr[]) =>
+      list.reduce((acc, row) => acc + parseNonNegative(row.retail) + parseNonNegative(row.buy), 0);
+    const hasMoney =
+      parseNonNegative(simBuy) +
+        parseNonNegative(simSale) +
+        sumMerch(mobileMerch) +
+        sumMerch(accessoryMerch) +
+        parseNonNegative(packageRWind) +
+        parseNonNegative(packageRVoda) +
+        sumNamed(repairs) +
+        sumNamed(extras) +
+        parseNonNegative(posSale) +
+        sumNamed(cashExpenses) +
+        sumNamed(bankExpenses) >
+      0;
+    return hasMoney || !isBlankNote(mobileNotes);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -316,33 +299,16 @@ export default function DailyEntryPage({
       const purchases = parseNonNegative(restPurchases);
       const expenses = parseNonNegative(restExpenses);
       const hasMoney = cash + bank + purchases + expenses > 0;
-      const hasNotes = restNotes.trim().length > 0;
+      const hasNotes = !isBlankNote(restNotes);
       if (!hasMoney && !hasNotes) {
         toast.error("Add at least one amount or a note before saving.");
         setSaving(false);
         return;
       }
-    } else {
-      const phonesPayload = phones
-        .map((phone) => ({
-          selling_price: parseNonNegative(phone.sellingPrice),
-        }))
-        .filter((phone) => phone.selling_price > 0);
-      const simSum = parseNonNegative(simVodafone) + parseNonNegative(simWind);
-      const repairs = parseNonNegative(repairIncome);
-      const purch = parseNonNegative(mobilePurchases);
-      const exp = parseNonNegative(mobileExpenses);
-      if (
-        phonesPayload.length === 0 &&
-        simSum === 0 &&
-        repairs === 0 &&
-        purch === 0 &&
-        exp === 0
-      ) {
-        toast.error("Add handset sales, SIM totals, repairs, purchases, or expenses before saving.");
-        setSaving(false);
-        return;
-      }
+    } else if (!mobileEntryHasContent()) {
+      toast.error("Add at least one amount or a note before saving.");
+      setSaving(false);
+      return;
     }
 
     try {
@@ -377,24 +343,35 @@ export default function DailyEntryPage({
           if (insertError) throw insertError;
         }
       } else {
-        const phonesPayload = phones
-          .map((phone) => ({
-            item_name: phone.itemName,
-            selling_price: parseNonNegative(phone.sellingPrice),
-            profit: parseNonNegative(phone.profit),
-          }))
-          .filter((phone) => phone.selling_price > 0);
+        const toLines = (list: NamedRowStr[]) =>
+          list
+            .map((r) => ({
+              item_name: r.itemName,
+              amount: parseNonNegative(r.amount),
+            }))
+            .filter((r) => r.amount > 0);
+
+        const { sales: mobile_sales, buys: mobile_buys } = merchFormStringsToSaleBuy(mobileMerch);
+        const { sales: accessory_sales, buys: accessory_buys } = merchFormStringsToSaleBuy(accessoryMerch);
 
         const rows = buildMobileDailyRows({
           business_id: businessId,
           created_by_user_id: userId,
           transaction_date: entryDate,
-          phones: phonesPayload,
-          sim_vodafone: parseNonNegative(simVodafone),
-          sim_wind: parseNonNegative(simWind),
-          repair_income: parseNonNegative(repairIncome),
-          purchases: parseNonNegative(mobilePurchases),
-          expenses: parseNonNegative(mobileExpenses),
+          sim_buy: parseNonNegative(simBuy),
+          sim_sale: parseNonNegative(simSale),
+          mobile_sales,
+          mobile_buys,
+          accessory_sales,
+          accessory_buys,
+          package_r_wind: parseNonNegative(packageRWind),
+          package_r_voda: parseNonNegative(packageRVoda),
+          repairs: toLines(repairs),
+          extras: toLines(extras),
+          pos_sale: parseNonNegative(posSale),
+          notes: mobileNotes,
+          cash_expenses: toLines(cashExpenses),
+          bank_expenses: toLines(bankExpenses),
         });
 
         if (rows.length) {
@@ -417,50 +394,13 @@ export default function DailyEntryPage({
   };
 
   return (
-    <div className="space-y-6">
-      <section className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[var(--lv-heading)]">
-              Daily summary ({entryDate || "pending"})
-            </h2>
-            <p className="mt-2 text-xs opacity-90 text-[var(--lv-muted-strong)]">
-              Restaurant profit = combined sales − purchases − expenses. Mobile profit = handset margin
-              + SIM sales + repairs − purchases − expenses.
-            </p>
-          </div>
-          {summary ? (
-            <div className="rounded-xl border border-[color-mix(in_srgb,var(--lv-accent)_32%,transparent)] bg-[color-mix(in_srgb,var(--lv-accent)_10%,transparent)] px-4 py-3 text-right backdrop-blur-sm">
-              <p className="text-xs uppercase tracking-wide text-[var(--lv-accent)]">Daily profit</p>
-              <p className="text-3xl font-semibold text-[var(--lv-traffic-positive)]">
-                {formatCurrency(summary.headline)}
-              </p>
-            </div>
-          ) : null}
-        </div>
-        {summary ? (
-          <dl className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(summary.details).map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-[#ffffff10] bg-[color-mix(in_srgb,var(--lv-card)_70%,transparent)] px-4 py-3 backdrop-blur-sm"
-              >
-                <dt className="text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">{label}</dt>
-                <dd className="mt-1 text-lg font-semibold text-[var(--lv-heading)]">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="mt-4 text-sm text-[var(--lv-muted-strong)]">Loading summary…</p>
-        )}
-      </section>
-
-      <GlassFormCard>
+    <GlassFormCard>
         <h1 className="text-2xl font-semibold text-[var(--lv-heading)]">
           Daily entry · {businessType === "restaurant" ? "Restaurant" : "Mobile shop"}
         </h1>
         <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-          Amounts cannot be negative. Saving replaces Supabase rows for this business/date, then inserts the new bundle.
+          Amounts cannot be negative. Saving replaces Supabase rows for this business/date, then inserts the new
+          bundle.
         </p>
 
         {loading ? <p className="mt-6 text-sm text-[var(--lv-muted-strong)]">Loading business…</p> : null}
@@ -508,126 +448,155 @@ export default function DailyEntryPage({
                     onChange={(event) => clampInput(event.target.value, field.setter)}
                   />
                 ))}
-                <MidnightField id="notes" label="Notes" rows={4} value={restNotes} onChange={(event) => setRestNotes(event.target.value)} />
+                <MidnightField
+                  id="rest-notes"
+                  label="Notes"
+                  rows={5}
+                  value={restNotes}
+                  onChange={(event) => setRestNotes(event.target.value)}
+                  disabled={saving}
+                />
               </div>
             ) : (
-              <div className="flex flex-col gap-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-[var(--lv-heading)]">Mobile phone sales</h3>
-                    <p className="text-xs text-[var(--lv-muted-strong)]">
-                      Add one row per handset with metadata-backed profit tracking.
-                    </p>
-                  </div>
-                  <PressableButton type="button" variant="secondary" className="min-h-12 w-full shrink-0 sm:w-auto" onClick={addPhoneRow}>
-                    Add phone
-                  </PressableButton>
-                </div>
-
-                {phones.map((phone, index) => (
-                  <div
-                    key={`phone-${index}`}
-                    className="rounded-2xl border border-[#ffffff10] bg-[color-mix(in_srgb,var(--lv-card)_55%,transparent)] p-4 backdrop-blur-md"
-                  >
-                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">Phone {index + 1}</p>
-                      <PressableButton
-                        type="button"
-                        variant="ghost"
-                        className="min-h-12 w-full text-[var(--lv-traffic-critical)] sm:w-auto"
-                        disabled={phones.length === 1}
-                        onClick={() => removePhoneRow(index)}
-                      >
-                        Remove
-                      </PressableButton>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <MidnightField
-                        id={`phone-${index}-name`}
-                        label="Item name"
-                        type="text"
-                        value={phone.itemName}
-                        onChange={(event) => updatePhoneRow(index, "itemName", event.target.value)}
-                      />
-                      <MidnightField
-                        id={`phone-${index}-price`}
-                        label="Selling price"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        inputMode="decimal"
-                        value={phone.sellingPrice}
-                        onChange={(event) =>
-                          updatePhoneRow(index, "sellingPrice", String(Math.max(0, parseNonNegative(event.target.value))))
-                        }
-                      />
-                      <MidnightField
-                        id={`phone-${index}-profit`}
-                        label="Profit (per item)"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        inputMode="decimal"
-                        value={phone.profit}
-                        onChange={(event) =>
-                          updatePhoneRow(index, "profit", String(Math.max(0, parseNonNegative(event.target.value))))
-                        }
-                      />
-                    </div>
-                  </div>
-                ))}
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {[
-                    { id: "vod", label: "SIM · Vodafone total", state: simVodafone, setter: setSimVodafone },
-                    { id: "wnd", label: "SIM · Wind total", state: simWind, setter: setSimWind },
-                  ].map((field) => (
+              <div className="flex flex-col gap-8">
+                <section className="flex flex-col gap-3">
+                  <h3 className="text-lg font-semibold text-[var(--lv-heading)]">SIM</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <MidnightField
-                      key={field.id}
-                      id={field.id}
-                      label={field.label}
+                      id="sim-buy"
+                      label="SIM buy (shop cost)"
                       type="number"
                       min={0}
                       step="0.01"
                       inputMode="decimal"
-                      value={field.state}
-                      onChange={(event) => clampInput(event.target.value, field.setter)}
+                      value={simBuy}
+                      onChange={(e) => clampInput(e.target.value, setSimBuy)}
                     />
-                  ))}
-                </div>
+                    <MidnightField
+                      id="sim-sale"
+                      label="SIM sale (retail)"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={simSale}
+                      onChange={(e) => clampInput(e.target.value, setSimSale)}
+                    />
+                  </div>
+                </section>
 
-                {[
-                  {
-                    id: "repairs",
-                    label: "Repair services income",
-                    value: repairIncome,
-                    setter: setRepairIncome,
-                  },
-                  {
-                    id: "mpurchases",
-                    label: "Purchases",
-                    value: mobilePurchases,
-                    setter: setMobilePurchases,
-                  },
-                  {
-                    id: "mexpenses",
-                    label: "Expenses",
-                    value: mobileExpenses,
-                    setter: setMobileExpenses,
-                  },
-                ].map((field) => (
+                <MerchNamedBlock
+                  idPrefix="m-phone"
+                  title="Mobile phones"
+                  hint="Each line: optional name, retail sale, and stock cost for the same handset."
+                  rows={mobileMerch}
+                  setRows={setMobileMerch}
+                  retailLabel="Retail (sale)"
+                  buyLabel="Buy (cost)"
+                  helpers={merchListHelpers}
+                />
+
+                <MerchNamedBlock
+                  idPrefix="m-acc"
+                  title="Accessories"
+                  hint="Each line: optional name, retail sale, and purchase cost."
+                  rows={accessoryMerch}
+                  setRows={setAccessoryMerch}
+                  retailLabel="Retail (sale)"
+                  buyLabel="Buy (cost)"
+                  helpers={merchListHelpers}
+                />
+
+                <section className="flex flex-col gap-3">
+                  <h3 className="text-lg font-semibold text-[var(--lv-heading)]">Packages sale</h3>
+                  <p className="text-xs text-[var(--lv-muted-strong)]">Carrier packages (top-up / bundle retail).</p>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <MidnightField
+                      id="pkg-wind"
+                      label="R.Wind"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={packageRWind}
+                      onChange={(e) => clampInput(e.target.value, setPackageRWind)}
+                    />
+                    <MidnightField
+                      id="pkg-voda"
+                      label="R.Voda"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={packageRVoda}
+                      onChange={(e) => clampInput(e.target.value, setPackageRVoda)}
+                    />
+                  </div>
+                </section>
+
+                <NamedLinesOnly
+                  idPrefix="m-repair"
+                  title="Repairs"
+                  hint="Each repair job: short label + amount."
+                  rows={repairs}
+                  setRows={setRepairs}
+                  helpers={namedListHelpers}
+                />
+
+                <NamedLinesOnly
+                  idPrefix="m-extra"
+                  title="Extras"
+                  hint="Other income lines with a name (e.g. commission, service)."
+                  rows={extras}
+                  setRows={setExtras}
+                  helpers={namedListHelpers}
+                />
+
+                <section className="flex flex-col gap-3">
+                  <h3 className="text-lg font-semibold text-[var(--lv-heading)]">POS</h3>
+                  <p className="text-xs text-[var(--lv-muted-strong)]">
+                    Card-terminal / POS turnover for the day (bank-acquired sales).
+                  </p>
                   <MidnightField
-                    key={field.id}
-                    id={field.id}
-                    label={field.label}
+                    id="pos-sale"
+                    label="POS (card) sales"
                     type="number"
                     min={0}
                     step="0.01"
                     inputMode="decimal"
-                    value={field.value}
-                    onChange={(event) => clampInput(event.target.value, field.setter)}
+                    value={posSale}
+                    onChange={(e) => clampInput(e.target.value, setPosSale)}
                   />
-                ))}
+                </section>
+
+                <NamedLinesOnly
+                  idPrefix="m-exp-cash"
+                  title="Cash expenses"
+                  hint="Paid in cash — one line per payment. Use recognizable names (e.g. Ric. Wind, Mobilax) for supplier top-ups so Total expense can separate them from other costs."
+                  rows={cashExpenses}
+                  setRows={setCashExpenses}
+                  helpers={namedListHelpers}
+                  nameFieldLabel="Detail"
+                />
+
+                <NamedLinesOnly
+                  idPrefix="m-exp-bank"
+                  title="Bank expenses"
+                  hint="Paid by card or bank — one line per charge. Same naming as cash for supplier top-ups (Ric. Wind, Ric. Shop, …)."
+                  rows={bankExpenses}
+                  setRows={setBankExpenses}
+                  helpers={namedListHelpers}
+                  nameFieldLabel="Detail"
+                />
+
+                <MidnightField
+                  id="mobile-daily-notes"
+                  label="Day notes"
+                  rows={5}
+                  value={mobileNotes}
+                  onChange={(e) => setMobileNotes(e.target.value)}
+                  disabled={saving}
+                />
               </div>
             )}
 
@@ -636,7 +605,6 @@ export default function DailyEntryPage({
             </PressableButton>
           </form>
         ) : null}
-      </GlassFormCard>
-    </div>
+    </GlassFormCard>
   );
 }

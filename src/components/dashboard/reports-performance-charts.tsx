@@ -15,6 +15,8 @@ import {
   YAxis,
 } from "recharts";
 
+import { formatCurrencyWhole } from "@/lib/utils/formatters";
+
 function formatCompactMoney(value: number) {
   if (Math.abs(value) >= 1000)
     return `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
@@ -22,11 +24,7 @@ function formatCompactMoney(value: number) {
 }
 
 function tooltipMoney(value: number) {
-  return value.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
+  return formatCurrencyWhole(value);
 }
 
 const tickStyle = { fill: "#64748b", fontSize: 11 };
@@ -53,6 +51,10 @@ export type ProfitTrendDatum = {
 type Props = {
   salesVsExpenses: SalesVsExpensesDatum[];
   profitTrend: ProfitTrendDatum[];
+  /** Mobile shop: client last-balance line chart labels. */
+  profitTrendTitle?: string;
+  profitTrendCaption?: string;
+  profitTooltipLabel?: string;
 };
 
 function ChartViewport({ children }: { children: React.ReactNode }) {
@@ -65,7 +67,13 @@ function ChartViewport({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function ReportsPerformanceCharts({ salesVsExpenses, profitTrend }: Props) {
+export function ReportsPerformanceCharts({
+  salesVsExpenses,
+  profitTrend,
+  profitTrendTitle = "Profit trend · selected month",
+  profitTrendCaption = "Net profit per day for the calendar month you pick above.",
+  profitTooltipLabel = "Net profit",
+}: Props) {
   return (
     <div className="grid min-w-0 gap-6 xl:grid-cols-2">
       <motion.article
@@ -124,10 +132,8 @@ export function ReportsPerformanceCharts({ salesVsExpenses, profitTrend }: Props
         transition={{ duration: 0.3, delay: 0.05 }}
         className="glass-panel rounded-2xl p-4 sm:p-5"
       >
-        <h3 className="text-base font-semibold text-[var(--lv-heading)]">Profit trend · selected month</h3>
-        <p className="mt-1 text-xs text-[var(--lv-muted-strong)]">
-          Net profit per day for the calendar month you pick above.
-        </p>
+        <h3 className="text-base font-semibold text-[var(--lv-heading)]">{profitTrendTitle}</h3>
+        <p className="mt-1 text-xs text-[var(--lv-muted-strong)]">{profitTrendCaption}</p>
         <ChartViewport>
           <ResponsiveContainer width="100%" height="100%" minHeight={240}>
             <LineChart data={profitTrend} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
@@ -142,7 +148,7 @@ export function ReportsPerformanceCharts({ salesVsExpenses, profitTrend }: Props
               <YAxis tick={tickStyle} tickFormatter={formatCompactMoney} width={44} />
               <Tooltip
                 contentStyle={tooltipContentStyle}
-                formatter={(value) => [tooltipMoney(Number(value ?? 0)), "Net profit"]}
+                formatter={(value) => [tooltipMoney(Number(value ?? 0)), profitTooltipLabel]}
               />
               <Line
                 type="monotone"

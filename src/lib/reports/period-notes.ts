@@ -1,26 +1,47 @@
 import {
   getMetadata,
   metaString,
+  SOURCE_MOBILE,
   SOURCE_RESTAURANT,
   type TransactionWithMeta,
 } from "@/lib/dashboard/daily-entry";
+import { isBlankNote } from "@/lib/utils/rich-text";
 
-/** Restaurant daily-entry notes (`daily_notes` line), scoped to calendar month. */
+export type DailyNoteEntry = {
+  date: string;
+  /** Stored HTML from the rich editor (sanitized when rendered). */
+  html: string;
+};
+
+/** Daily-entry notes (`daily_notes` line) for restaurant or mobile shop, in a date range. */
+export function collectDailyEntryNotesForRange(
+  rows: TransactionWithMeta[],
+  rangeStartISO: string,
+  rangeEndISO: string,
+): DailyNoteEntry[] {
+  const out: DailyNoteEntry[] = [];
+  for (const row of rows) {
+    if (row.transaction_date < rangeStartISO || row.transaction_date > rangeEndISO) continue;
+    const m = getMetadata(row.metadata, row.description);
+    const src = metaString(m, "source");
+    if (src !== SOURCE_RESTAURANT && src !== SOURCE_MOBILE) continue;
+    if (metaString(m, "line") !== "daily_notes") continue;
+    const html = typeof m["notes"] === "string" ? m["notes"] : "";
+    if (isBlankNote(html)) continue;
+    out.push({ date: row.transaction_date, html });
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
+}
+
+/** @deprecated Prefer {@link collectDailyEntryNotesForRange}; same data as `text` = HTML body. */
 export function collectDailyEntryNotes(
   rows: TransactionWithMeta[],
   monthStartISO: string,
   monthEndISO: string,
 ): { date: string; text: string }[] {
-  const out: { date: string; text: string }[] = [];
-  for (const row of rows) {
-    if (row.transaction_date < monthStartISO || row.transaction_date > monthEndISO) continue;
-    const m = getMetadata(row.metadata, row.description);
-    if (metaString(m, "source") !== SOURCE_RESTAURANT) continue;
-    if (metaString(m, "line") !== "daily_notes") continue;
-    const text = typeof m["notes"] === "string" ? m["notes"].trim() : "";
-    if (!text) continue;
-    out.push({ date: row.transaction_date, text });
-  }
-  out.sort((a, b) => a.date.localeCompare(b.date));
-  return out;
+  return collectDailyEntryNotesForRange(rows, monthStartISO, monthEndISO).map((e) => ({
+    date: e.date,
+    text: e.html,
+  }));
 }

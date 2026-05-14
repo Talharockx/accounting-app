@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ReportsPerformanceCharts } from "@/components/dashboard/reports-performance-charts";
 import { BentoCell } from "@/components/ui/bento-cell";
-import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
+import { mobileProfitFromTransactions, type TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import {
   buildDailySeries,
   monthlyTotalsForRange,
@@ -15,7 +15,7 @@ import {
   businessTypeLabel,
   downloadMonthlyReportPdf,
 } from "@/lib/reports/monthly-report-pdf";
-import { collectDailyEntryNotes } from "@/lib/reports/period-notes";
+import { buildMobilePersonExpenseMatrix, matrixColumnTotal } from "@/lib/reports/mobile-person-expense-matrix";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import {
   addCalendarDaysISO,
@@ -29,6 +29,7 @@ import {
 } from "@/lib/utils/date-range";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
+import { formatCurrencyWhole } from "@/lib/utils/formatters";
 import { supabase } from "@/lib/supabaseClient";
 import { PressableButton } from "@/components/ui/pressable";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,14 +50,6 @@ function calendarMonthHeading(year: number, monthIndex: number): string {
   return new Date(year, monthIndex, 15).toLocaleString("en-US", {
     month: "long",
     year: "numeric",
-  });
-}
-
-function currency(n: number) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
   });
 }
 
@@ -112,7 +105,7 @@ export default function ReportsPage({
     return () => {
       cancelled = true;
     };
-  }, [params]);
+  }, []);
 
   const parsedMonth = useMemo(() => parseMonthInputValue(monthInput), [monthInput]);
 
@@ -152,7 +145,8 @@ export default function ReportsPage({
             .eq("business_id", businessId)
             .gte("transaction_date", chartFetchRange.fetchStart)
             .lte("transaction_date", chartFetchRange.fetchEnd)
-            .order("transaction_date", { ascending: true }),
+            .order("transaction_date", { ascending: true })
+            .limit(20_000),
         async () =>
           await supabase
             .from("transactions")
@@ -160,13 +154,13 @@ export default function ReportsPage({
             .eq("business_id", businessId)
             .gte("transaction_date", chartFetchRange.fetchStart)
             .lte("transaction_date", chartFetchRange.fetchEnd)
-            .order("transaction_date", { ascending: true }),
+            .order("transaction_date", { ascending: true })
+            .limit(20_000),
       );
 
       if (fetchError) {
         const msg = getUserFriendlyError(new Error(fetchError.message));
         setTxError(msg);
-        toast.error(msg);
         setTransactions([]);
         setTxLoading(false);
         return;
@@ -176,7 +170,6 @@ export default function ReportsPage({
     } catch (caught) {
       const msg = getUserFriendlyError(caught, SYSTEM_UNAVAILABLE);
       setTxError(msg);
-      toast.error(msg);
       setTransactions([]);
     }
 
@@ -241,7 +234,29 @@ export default function ReportsPage({
       const days = eachISODateInclusive(monthRange.start, monthRange.end);
       const dailyRows = buildDailySeries(businessType, transactions, days);
       const totals = monthlyTotalsForRange(businessType, transactions, monthRange.start, monthRange.end);
-      const monthNotes = collectDailyEntryNotes(transactions, monthRange.start, monthRange.end);
+      const inMonthTransactions = transactions.filter(
+        (t) => t.transaction_date >= monthRange.start && t.transaction_date <= monthRange.end,
+      );
+      const mobilePersonMatrix =
+        businessType === "mobile_shop"
+          ? buildMobilePersonExpenseMatrix(transactions, monthRange.start, monthRange.end)
+          : null;
+      const mobileExecutiveSummary =
+        businessType === "mobile_shop" && mobilePersonMatrix
+          ? (() => {
+              const m = mobileProfitFromTransactions(inMonthTransactions);
+              return {
+                totalSale: m.totalSaleSheet,
+                totalCost: m.purchases,
+                totalRicarche: m.supplierRicarche,
+                totalExpenseCash: m.cashExpenses,
+                lastBalanceWithoutBank: m.lastBalance,
+                simProfit: matrixColumnTotal(mobilePersonMatrix, "Sim Profit"),
+                mobileProfit: matrixColumnTotal(mobilePersonMatrix, "Mobile Profit"),
+                accesProfit: matrixColumnTotal(mobilePersonMatrix, "Acces. Profit"),
+              };
+            })()
+          : null;
       await downloadMonthlyReportPdf({
         businessName: business.name,
         dateRangeLabel: `${monthRange.start} → ${monthRange.end}`,
@@ -251,7 +266,9 @@ export default function ReportsPage({
         totals,
         salesVsExpensesChart: salesVsExpensesData,
         profitTrendChart: profitTrendData,
-        monthNotes,
+        useClientLastBalanceLabels: businessType === "mobile_shop",
+        mobileExecutiveSummary,
+        mobilePersonMatrix,
       });
       setPdfMessage("PDF report downloaded.");
       toast.success("Monthly report downloaded.");
@@ -328,7 +345,7 @@ export default function ReportsPage({
             Monthly sales
           </p>
           <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
-            {txLoading || txError ? "—" : currency(monthlyTotals.sales)}
+            {txLoading || txError ? "—" : formatCurrencyWhole(monthlyTotals.sales)}
           </p>
         </BentoCell>
         <BentoCell className="p-6">
@@ -336,12 +353,12 @@ export default function ReportsPage({
             Operating expenses
           </p>
           <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
-            {txLoading || txError ? "—" : currency(monthlyTotals.operatingExpenses)}
+            {txLoading || txError ? "—" : formatCurrencyWhole(monthlyTotals.operatingExpenses)}
           </p>
         </BentoCell>
         <BentoCell featured className="p-6">
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-accent)]">
-            Net profit
+            {businessType === "mobile_shop" ? "Last balance" : "Net profit"}
           </p>
           <p
             className={cn(
@@ -351,7 +368,7 @@ export default function ReportsPage({
               monthlyTotals.profit === 0 && "text-[var(--lv-traffic-neutral)]",
             )}
           >
-            {txLoading || txError ? "—" : currency(monthlyTotals.profit)}
+            {txLoading || txError ? "—" : formatCurrencyWhole(monthlyTotals.profit)}
           </p>
         </BentoCell>
       </section>
@@ -421,6 +438,15 @@ export default function ReportsPage({
           <ReportsPerformanceCharts
             salesVsExpenses={salesVsExpensesData}
             profitTrend={profitTrendData}
+            profitTrendTitle={
+              businessType === "mobile_shop" ? "Last balance trend · selected month" : undefined
+            }
+            profitTrendCaption={
+              businessType === "mobile_shop"
+                ? "Per day: total sale − total cost − total recharges (R.Wind + R.Voda) − cash expenses only — same as Overview last balance. Bank expenses are excluded from last balance."
+                : undefined
+            }
+            profitTooltipLabel={businessType === "mobile_shop" ? "Last balance" : undefined}
           />
         )}
       </section>

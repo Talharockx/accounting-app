@@ -57,7 +57,7 @@ export default function SettingsPage({
     return () => {
       cancelled = true;
     };
-  }, [params]);
+  }, []);
 
   const runDelete = async () => {
     if (!business) return;

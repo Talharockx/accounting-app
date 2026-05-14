@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { formatCurrency } from "@/lib/utils/formatters";
+
 export default function Home() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
@@ -46,19 +48,19 @@ export default function Home() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
                   <p className="text-xs text-slate-400">Today Sales</p>
-                  <p className="mt-2 text-2xl font-semibold">$4,280</p>
+                  <p className="mt-2 text-2xl font-semibold">{formatCurrency(4280)}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
                   <p className="text-xs text-slate-400">Net Profit</p>
-                  <p className="mt-2 text-2xl font-semibold text-emerald-300">$1,190</p>
+                  <p className="mt-2 text-2xl font-semibold text-emerald-300">{formatCurrency(1190)}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
                   <p className="text-xs text-slate-400">Open Invoices</p>
-                  <p className="mt-2 text-2xl font-semibold">$980</p>
+                  <p className="mt-2 text-2xl font-semibold">{formatCurrency(980)}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
                   <p className="text-xs text-slate-400">Expenses</p>
-                  <p className="mt-2 text-2xl font-semibold text-rose-300">$730</p>
+                  <p className="mt-2 text-2xl font-semibold text-rose-300">{formatCurrency(730)}</p>
                 </div>
               </div>
             </div>
