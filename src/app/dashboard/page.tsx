@@ -25,17 +25,27 @@ type Business = {
   contact_email: string;
 };
 
+function normalizeBusinessType(raw: unknown): BusinessType | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim().toLowerCase().replace(/\s+/g, "_");
+  if (t === "restaurant") return "restaurant";
+  if (t === "mobile_shop") return "mobile_shop";
+  if (t === "mobile" || t === "mobileshop" || t === "phone_shop" || t === "phoneshop") return "mobile_shop";
+  return null;
+}
+
+function coerceCreatedAt(raw: unknown): string {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (typeof raw === "number" && Number.isFinite(raw)) return new Date(raw).toISOString();
+  return new Date(0).toISOString();
+}
+
 function parseBusinessRow(r: Record<string, unknown>): Business | null {
   const id = r.id;
   const name = r.name;
-  const bt = r.business_type;
-  const created = r.created_at;
-  if (
-    typeof id !== "string" ||
-    typeof name !== "string" ||
-    typeof created !== "string" ||
-    (bt !== "restaurant" && bt !== "mobile_shop")
-  ) {
+  const bt = normalizeBusinessType(r.business_type);
+  const created = coerceCreatedAt(r.created_at);
+  if (typeof id !== "string" || typeof name !== "string" || !bt) {
     return null;
   }
   const phone_number = typeof r.phone_number === "string" ? r.phone_number : "";
@@ -69,6 +79,11 @@ export default function DashboardPage() {
     if (!modularWorkspaceType) return [];
     return businesses.filter((b) => b.business_type === modularWorkspaceType);
   }, [businesses, modularWorkspaceType]);
+
+  const countSelectedType = useMemo(
+    () => businesses.filter((b) => b.business_type === modularWorkspaceType).length,
+    [businesses, modularWorkspaceType],
+  );
 
   const title = useMemo(() => {
     if (loading) return "Loading dashboard…";
@@ -354,10 +369,50 @@ export default function DashboardPage() {
                   </p>
                 </div>
               ) : displayedWorkspaces.length === 0 ? (
-                <p className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
-                  No {modularWorkspaceType === "restaurant" ? "restaurants" : "mobile shops"} yet. Add one below or from
-                  the top bar.
-                </p>
+                <div className="space-y-4 rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
+                  <p>
+                    No {modularWorkspaceType === "restaurant" ? "restaurants" : "mobile shops"} in this account&apos;s
+                    list yet. Add one below or from the top bar.
+                  </p>
+                  {hasBusinesses && countSelectedType === 0 ? (
+                    <div className="rounded-lg border border-[color-mix(in_srgb,var(--lv-glass-edge)_50%,transparent)] bg-[var(--lv-card)]/80 p-4 text-xs leading-relaxed text-[var(--lv-muted-strong)]">
+                      <p className="font-semibold text-[var(--lv-heading)]">If this business already exists in Supabase</p>
+                      <ul className="mt-2 list-disc space-y-1.5 pl-4">
+                        <li>
+                          Sign in with the <strong className="text-[var(--lv-heading)]">same user</strong> as{" "}
+                          <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[0.65rem]">owner_user_id</code>{" "}
+                          on that row (production login is often a different email than local testing).
+                        </li>
+                        <li>
+                          In Vercel → Settings → Environment Variables, confirm{" "}
+                          <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[0.65rem]">
+                            NEXT_PUBLIC_SUPABASE_URL
+                          </code>{" "}
+                          and{" "}
+                          <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[0.65rem]">
+                            NEXT_PUBLIC_SUPABASE_ANON_KEY
+                          </code>{" "}
+                          point to this Supabase project (not an empty duplicate project).
+                        </li>
+                        <li>
+                          In Supabase → Authentication → URL configuration, add your production site URL and redirect
+                          URLs so the session is created on your Vercel domain.
+                        </li>
+                        <li>
+                          In Supabase → Table Editor → <strong className="text-[var(--lv-heading)]">businesses</strong>{" "}
+                          → RLS policies: <strong className="text-[var(--lv-heading)]">SELECT</strong> for authenticated
+                          users should allow rows where{" "}
+                          <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[0.65rem]">
+                            owner_user_id = auth.uid()
+                          </code>
+                          . Avoid policies that filter by{" "}
+                          <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[0.65rem]">business_type</code>{" "}
+                          unless you intend to hide whole categories.
+                        </li>
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {displayedWorkspaces.map((business, idx) => (

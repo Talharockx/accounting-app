@@ -1,6 +1,7 @@
 import type { jsPDF } from "jspdf";
 
 import type { DailyFinancialBreakdown, ReportsBusinessType } from "@/lib/dashboard/reports-metrics";
+import type { MobileLedgerMatrixReport } from "@/lib/dashboard/mobile-transaction-ledger";
 import type { MobilePersonExpenseMatrixReport } from "@/lib/reports/mobile-person-expense-matrix";
 import { formatCurrency } from "@/lib/utils/formatters";
 import type { ProfitTrendDatum, SalesVsExpensesDatum } from "@/components/dashboard/reports-performance-charts";
@@ -38,7 +39,9 @@ export type MonthlyReportPdfInput = {
   salesVsExpensesChart: SalesVsExpensesDatum[];
   /** Same series as dashboard profit line for the month. */
   profitTrendChart: ProfitTrendDatum[];
-  /** Mobile shop: optional person / detail columns (cash + bank expense line names) for “monthly entries” grid. */
+  /** Mobile shop: Transactions-tab ledger grid (preferred for monthly entries table). */
+  mobileLedgerMatrix?: MobileLedgerMatrixReport | null;
+  /** Mobile shop: legacy person / bucket grid (fallback). */
   mobilePersonMatrix?: MobilePersonExpenseMatrixReport | null;
   /** Mobile shop: PDF uses “Last balance” labels (client sheet formula). */
   useClientLastBalanceLabels?: boolean;
@@ -71,7 +74,16 @@ function safeFilePart(name: string): string {
 }
 
 function isMobileSheetProfitColumn(col: string): boolean {
-  return col === "Sim Profit" || col === "Mobile Profit" || col === "Acces. Profit";
+  return (
+    col === "Sim Profit" ||
+    col === "Mobile Profit" ||
+    col === "Acces. Profit" ||
+    col === "Sim profit" ||
+    col === "Mobile profit" ||
+    col === "Access. profit" ||
+    col === "Last balance" ||
+    col === "Profit (sale−buy)"
+  );
 }
 
 function paintPageBackground(doc: jsPDF, pageW: number, pageH: number): void {
@@ -295,16 +307,25 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     if (profitTrendPng) addChartImage(profitTrendPng);
   }
 
+  type MatrixReport = MobileLedgerMatrixReport | MobilePersonExpenseMatrixReport;
+
+  const ledgerMatrix =
+    mobileClient &&
+    input.mobileLedgerMatrix &&
+    input.mobileLedgerMatrix.columns.length > 0 &&
+    input.mobileLedgerMatrix.rows.length > 0
+      ? input.mobileLedgerMatrix
+      : null;
+
   const hasNamedPersonMatrix = Boolean(
     mobileClient &&
+      !ledgerMatrix &&
       input.mobilePersonMatrix &&
       input.mobilePersonMatrix.columns.length > 0 &&
       input.mobilePersonMatrix.rows.length > 0,
   );
 
-  let matrixForPdf: MobilePersonExpenseMatrixReport | null = hasNamedPersonMatrix
-    ? input.mobilePersonMatrix!
-    : null;
+  let matrixForPdf: MatrixReport | null = ledgerMatrix ?? (hasNamedPersonMatrix ? input.mobilePersonMatrix! : null);
 
   /** Named lines missing in DB metadata but month has operating → still use sheet layout (one column). */
   if (
@@ -410,7 +431,9 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
           doc.text(
             matrixBlurbSingleOperatingCol
               ? "All amounts in EUR · Daily operating total (matches “Operating expenses” in the summary table). Use Daily Entry named cash/bank lines to split this into person columns."
-              : "All amounts in EUR · Same buckets as Mobile Daily Entry: SIM, mobile & accessory sale/buy, R.Wind & R.Voda, repair, extra, POS, and total cash vs bank expenses per calendar day.",
+              : ledgerMatrix
+                ? "All amounts in EUR · Same columns as the Transactions tab (daily ledger: sales, buys, profits, packages, POS, expenses, balances)."
+                : "All amounts in EUR · Same buckets as Mobile Daily Entry: SIM, mobile & accessory sale/buy, R.Wind & R.Voda, repair, extra, POS, and total cash vs bank expenses per calendar day.",
             margin,
             margin + 22,
             { maxWidth: pw - margin * 2 },

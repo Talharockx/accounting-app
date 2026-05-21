@@ -15,7 +15,10 @@ import {
   businessTypeLabel,
   downloadMonthlyReportPdf,
 } from "@/lib/reports/monthly-report-pdf";
-import { buildMobilePersonExpenseMatrix, matrixColumnTotal } from "@/lib/reports/mobile-person-expense-matrix";
+import {
+  buildMobileTransactionLedgerMatrix,
+  ledgerMatrixColumnTotal,
+} from "@/lib/dashboard/mobile-transaction-ledger";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import {
   addCalendarDaysISO,
@@ -237,12 +240,12 @@ export default function ReportsPage({
       const inMonthTransactions = transactions.filter(
         (t) => t.transaction_date >= monthRange.start && t.transaction_date <= monthRange.end,
       );
-      const mobilePersonMatrix =
+      const mobileLedgerMatrix =
         businessType === "mobile_shop"
-          ? buildMobilePersonExpenseMatrix(transactions, monthRange.start, monthRange.end)
+          ? buildMobileTransactionLedgerMatrix(transactions, monthRange.start, monthRange.end)
           : null;
       const mobileExecutiveSummary =
-        businessType === "mobile_shop" && mobilePersonMatrix
+        businessType === "mobile_shop" && mobileLedgerMatrix
           ? (() => {
               const m = mobileProfitFromTransactions(inMonthTransactions);
               return {
@@ -251,9 +254,9 @@ export default function ReportsPage({
                 totalRicarche: m.supplierRicarche,
                 totalExpenseCash: m.cashExpenses,
                 lastBalanceWithoutBank: m.lastBalance,
-                simProfit: matrixColumnTotal(mobilePersonMatrix, "Sim Profit"),
-                mobileProfit: matrixColumnTotal(mobilePersonMatrix, "Mobile Profit"),
-                accesProfit: matrixColumnTotal(mobilePersonMatrix, "Acces. Profit"),
+                simProfit: ledgerMatrixColumnTotal(mobileLedgerMatrix, "Sim profit"),
+                mobileProfit: ledgerMatrixColumnTotal(mobileLedgerMatrix, "Mobile profit"),
+                accesProfit: ledgerMatrixColumnTotal(mobileLedgerMatrix, "Access. profit"),
               };
             })()
           : null;
@@ -268,7 +271,7 @@ export default function ReportsPage({
         profitTrendChart: profitTrendData,
         useClientLastBalanceLabels: businessType === "mobile_shop",
         mobileExecutiveSummary,
-        mobilePersonMatrix,
+        mobileLedgerMatrix,
       });
       setPdfMessage("PDF report downloaded.");
       toast.success("Monthly report downloaded.");

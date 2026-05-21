@@ -10,12 +10,12 @@ import {
   mergeSaleBuyNamedLines,
   merchFormStringsToSaleBuy,
   metaString,
-  mobileProfitFromTransactions,
   parseMobileDailyFromTransactions,
   parseNonNegative,
-  summarizeMobileDay,
   summarizeRestaurantDay,
 } from "@/lib/dashboard/daily-entry";
+import { buildMobileTransactionLedgerRow } from "@/lib/dashboard/mobile-transaction-ledger";
+import { MobileTransactionsLedgerTable } from "@/components/dashboard/mobile-transactions-ledger-table";
 import {
   MerchNamedBlock,
   NamedLinesOnly,
@@ -29,7 +29,12 @@ import {
   selectWithMetadataColumnFallback,
 } from "@/lib/dashboard/transaction-metadata-fallback";
 import { getUserFriendlyError } from "@/lib/errors";
-import { getMonthBoundariesISO, parseMonthInputValue, toMonthInputValue } from "@/lib/utils/date-range";
+import {
+  getMonthBoundariesISO,
+  getTodayLocalISO,
+  parseMonthInputValue,
+  toMonthInputValue,
+} from "@/lib/utils/date-range";
 import { formatCurrency } from "@/lib/utils/formatters";
 import { isBlankNote } from "@/lib/utils/rich-text";
 import type { TransactionListRow } from "@/lib/supabase/map-transactions";
@@ -44,7 +49,6 @@ type BusinessType = "restaurant" | "mobile_shop";
 type TransactionRow = TransactionListRow;
 
 type RestaurantTotals = ReturnType<typeof summarizeRestaurantDay>;
-type MobileTotals = ReturnType<typeof summarizeMobileDay>;
 
 type RestaurantEdit = {
   kind: "restaurant";
@@ -116,6 +120,7 @@ export default function TransactionsPage({
   const [monthInput, setMonthInput] = useState(() =>
     toMonthInputValue(new Date().getFullYear(), new Date().getMonth()),
   );
+  const [dateFilter, setDateFilter] = useState("");
 
   const namedListHelpers = useNamedListHelpers();
   const merchListHelpers = useMerchListHelpers();
@@ -230,6 +235,10 @@ export default function TransactionsPage({
   const monthHeading =
     parsedMonth !== null ? calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex) : monthInput;
   const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
+  const monthBounds = useMemo(() => {
+    if (!parsedMonth) return null;
+    return getMonthBoundariesISO(parsedMonth.year, parsedMonth.monthIndex);
+  }, [parsedMonth]);
 
   const dates = useMemo(() => {
     const set = new Set<string>();
@@ -242,9 +251,14 @@ export default function TransactionsPage({
     [dates, rawRows],
   );
 
-  const summariesMobile = useMemo(
-    () => dates.map((date) => summarizeMobileDay(rawRows, date)),
-    [dates, rawRows],
+  const filteredDates = useMemo(() => {
+    if (!dateFilter) return dates;
+    return dates.filter((d) => d === dateFilter);
+  }, [dates, dateFilter]);
+
+  const mobileLedgerRows = useMemo(
+    () => filteredDates.map((date) => buildMobileTransactionLedgerRow(rawRows, date)),
+    [filteredDates, rawRows],
   );
 
   const restaurantTotalsSum = useMemo(
@@ -261,9 +275,6 @@ export default function TransactionsPage({
       ),
     [summariesRestaurant],
   );
-
-  /** One aggregate over the month — identical to Overview when the date range is the same calendar month. */
-  const monthMobileAggregate = useMemo(() => mobileProfitFromTransactions(rawRows), [rawRows]);
 
   const runDeleteDay = async (date: string) => {
     setDeletingDate(date);
@@ -398,9 +409,9 @@ export default function TransactionsPage({
     });
   };
 
-  const openEditMobile = (row: MobileTotals) => {
+  const openEditMobile = (date: string) => {
     const dayMeta = rawRows
-      .filter((item) => item.transaction_date === row.date)
+      .filter((item) => item.transaction_date === date)
       .map((r) => ({
         amount: r.amount,
         transaction_type: r.transaction_type,
@@ -408,7 +419,7 @@ export default function TransactionsPage({
         transaction_date: r.transaction_date,
         metadata: r.metadata,
       }));
-    const d = parseMobileDailyFromTransactions(dayMeta, row.date);
+    const d = parseMobileDailyFromTransactions(dayMeta, date);
     const mapLines = (lines: { item_name: string; amount: number }[]) =>
       lines.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }));
     const mapMerch = (sales: typeof d.mobile_sales, buys: typeof d.mobile_buys) =>
@@ -420,8 +431,8 @@ export default function TransactionsPage({
 
     setEditing({
       kind: "mobile_shop",
-      originalDate: row.date,
-      date: row.date,
+      originalDate: date,
+      date,
       simBuy: String(d.sim_buy),
       simSale: String(d.sim_sale),
       mobileMerch: mapMerch(d.mobile_sales, d.mobile_buys),
@@ -445,10 +456,11 @@ export default function TransactionsPage({
         </p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">Transactions</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
-          Day-by-day totals for the month you select below, compiled from saved Daily Entry. Figures are shown in euros
-          with aligned numerals for quick review and reconciliation.
+          {businessType === "mobile_shop"
+            ? "Mobile shop ledger: one row per day with sale, buy, profit, POS, expenses, and balance columns. Filter by month, then optionally by date."
+            : "Day-by-day totals for the month you select below, compiled from saved Daily Entry."}
         </p>
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
+        <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="transactions-month" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
               Month
@@ -458,10 +470,46 @@ export default function TransactionsPage({
               type="month"
               max={maxMonthInput}
               value={monthInput}
-              onChange={(e) => setMonthInput(e.target.value)}
+              onChange={(e) => {
+                setMonthInput(e.target.value);
+                setDateFilter("");
+              }}
               className="lv-input max-w-[12rem] rounded-xl"
             />
           </div>
+          {businessType === "mobile_shop" ? (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="transactions-date" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
+                Date (optional)
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id="transactions-date"
+                  type="date"
+                  value={dateFilter}
+                  min={monthBounds?.start}
+                  max={
+                    monthBounds
+                      ? monthBounds.end < getTodayLocalISO()
+                        ? monthBounds.end
+                        : getTodayLocalISO()
+                      : undefined
+                  }
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="lv-input max-w-[12rem] rounded-xl"
+                />
+                {dateFilter ? (
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter("")}
+                    className="rounded-xl border border-[color-mix(in_srgb,var(--lv-glass-edge)_55%,transparent)] px-3 py-2 text-xs font-semibold text-[var(--lv-muted-strong)] transition hover:text-[var(--lv-heading)]"
+                  >
+                    Clear date
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -578,174 +626,19 @@ export default function TransactionsPage({
             </tfoot>
           </table>
         </div>
+      ) : dateFilter && mobileLedgerRows.length === 0 ? (
+        <p className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
+          No daily entry for <span className="font-semibold text-[var(--lv-heading)]">{dateFilter}</span> in{" "}
+          {monthHeading}. Clear the date filter or pick another day.
+        </p>
       ) : (
-        <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] backdrop-blur-3xl shadow-[var(--lv-bento-shadow)]">
-          <table className="lv-tabular-mono w-full min-w-[1580px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 text-right font-medium">Total sale</th>
-                <th className="px-4 py-3 text-right font-medium">SIM sale</th>
-                <th className="px-4 py-3 text-right font-medium">SIM buy</th>
-                <th className="px-4 py-3 text-right font-medium">Pkgs</th>
-                <th className="px-4 py-3 text-right font-medium">Repairs</th>
-                <th className="px-4 py-3 text-right font-medium">Extras</th>
-                <th className="px-4 py-3 text-right font-medium">POS</th>
-                <th className="px-4 py-3 text-right font-medium">Purchases</th>
-                <th className="px-4 py-3 text-right font-medium">Cash exp</th>
-                <th className="px-4 py-3 text-right font-medium">Bank exp</th>
-                <th className="px-4 py-3 text-right font-medium">Last balance</th>
-                <th className="px-4 py-3 text-right font-medium">Last bal. + bank</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summariesMobile.map((row) => (
-                <tr
-                  key={row.date}
-                  className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_35%,transparent)] text-[var(--lv-heading)] last:border-0 hover:bg-[color-mix(in_srgb,var(--lv-accent)_05%,transparent)]"
-                >
-                  <td className="whitespace-nowrap px-4 py-3 text-[var(--lv-muted-strong)]">{row.date}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-[var(--lv-heading)]">
-                    {formatCurrency(row.totalSaleSheet)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.simSales)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.simBuy)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.packageSales)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.repairs)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.extras)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.posSales)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.purchases)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.cashExpenses)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.bankExpenses)}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold tracking-tight ${
-                      row.lastBalance > 0
-                        ? "text-[var(--lv-traffic-positive)]"
-                        : row.lastBalance < 0
-                          ? "text-[var(--lv-traffic-critical)]"
-                          : "text-[var(--lv-traffic-neutral)]"
-                    }`}
-                  >
-                    {formatCurrency(row.lastBalance)}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold tracking-tight ${
-                      row.lastBalanceWithBank > 0
-                        ? "text-[var(--lv-traffic-positive)]"
-                        : row.lastBalanceWithBank < 0
-                          ? "text-[var(--lv-traffic-critical)]"
-                          : "text-[var(--lv-traffic-neutral)]"
-                    }`}
-                  >
-                    {formatCurrency(row.lastBalanceWithBank)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        aria-label="Edit day"
-                        title="Edit day"
-                        onClick={() => openEditMobile(row)}
-                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-muted-strong)] transition hover:bg-[#ffffff07] hover:text-[var(--lv-heading)] active:scale-[0.97]"
-                      >
-                        <IconPencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Delete day"
-                        title="Delete day"
-                        disabled={deletingDate === row.date}
-                        onClick={() => setPendingDeleteDate(row.date)}
-                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-traffic-critical)] transition hover:bg-[color-mix(in_srgb,var(--lv-traffic-critical)_12%,transparent)] hover:text-[var(--lv-traffic-critical)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-                      >
-                        <IconTrash className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_75%,transparent)] text-[var(--lv-heading)]">
-                <th scope="row" className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-[var(--lv-accent)]">
-                  Total
-                </th>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right text-base font-bold text-[var(--lv-heading)]">
-                  {formatCurrency(monthMobileAggregate.totalSaleSheet)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.simSales)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.simBuy)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.packageSales)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.repairs)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.extras)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.posSales)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.purchases)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.cashExpenses)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(monthMobileAggregate.bankExpenses)}
-                </td>
-                <td
-                  className={`whitespace-nowrap px-4 py-3.5 text-right text-base font-bold tracking-tight ${
-                    monthMobileAggregate.lastBalance > 0
-                      ? "text-[var(--lv-traffic-positive)]"
-                      : monthMobileAggregate.lastBalance < 0
-                        ? "text-[var(--lv-traffic-critical)]"
-                        : "text-[var(--lv-traffic-neutral)]"
-                  }`}
-                >
-                  {formatCurrency(monthMobileAggregate.lastBalance)}
-                </td>
-                <td
-                  className={`whitespace-nowrap px-4 py-3.5 text-right text-base font-bold tracking-tight ${
-                    monthMobileAggregate.lastBalanceWithBank > 0
-                      ? "text-[var(--lv-traffic-positive)]"
-                      : monthMobileAggregate.lastBalanceWithBank < 0
-                        ? "text-[var(--lv-traffic-critical)]"
-                        : "text-[var(--lv-traffic-neutral)]"
-                  }`}
-                >
-                  {formatCurrency(monthMobileAggregate.lastBalanceWithBank)}
-                </td>
-                <td className="px-4 py-3.5" aria-hidden />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <MobileTransactionsLedgerTable
+          rows={mobileLedgerRows}
+          deletingDate={deletingDate}
+          onEdit={openEditMobile}
+          onDelete={setPendingDeleteDate}
+          footerLabel={dateFilter ? `Total (${dateFilter})` : `Total (${monthHeading})`}
+        />
       )}
 
       {editing?.kind === "restaurant" ? (

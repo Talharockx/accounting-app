@@ -3,10 +3,8 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  mobileProfitFromTransactions,
-  restaurantProfitFromTransactions,
-} from "@/lib/dashboard/daily-entry";
+import { mobileProfitFromTransactions, restaurantProfitFromTransactions } from "@/lib/dashboard/daily-entry";
+import { mobileLedgerSummaryFromTransactions } from "@/lib/dashboard/mobile-transaction-ledger";
 import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import type { TrafficTone } from "@/components/ui/sparkline";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
@@ -53,7 +51,7 @@ export default function BusinessOverviewPage({
   const [draftEnd, setDraftEnd] = useState(() => defaultMonthToDateRange().end);
   const [txLoading, setTxLoading] = useState(true);
   const [txError, setTxError] = useState("");
-  const [mobileBalanceView, setMobileBalanceView] = useState<"sheet" | "incl_bank">("sheet");
+  const [mobileBalanceView, setMobileBalanceView] = useState<"sheet" | "incl_bank" | "ledger">("sheet");
 
   const loadTransactions = useCallback(
     async (id: string, p: PeriodFilter, range: { start: string; end: string }, singleDay: string) => {
@@ -215,8 +213,24 @@ export default function BusinessOverviewPage({
   const isRestaurant = business.business_type === "restaurant";
   const restaurantTotals = restaurantProfitFromTransactions(transactions);
   const mobileTotals = mobileProfitFromTransactions(transactions);
+  const mobileSummary = mobileLedgerSummaryFromTransactions(transactions);
+  const mobileLastBalanceWithBankExpense =
+    mobileTotals.totalSaleSheet -
+    mobileTotals.purchases -
+    mobileTotals.supplierRicarche -
+    mobileTotals.bankExpenses;
   const mobileDisplayedBalance =
-    mobileBalanceView === "sheet" ? mobileTotals.lastBalance : mobileTotals.lastBalanceWithBank;
+    mobileBalanceView === "sheet"
+      ? mobileTotals.lastBalance
+      : mobileBalanceView === "incl_bank"
+        ? mobileTotals.lastBalanceWithBank
+        : mobileLastBalanceWithBankExpense;
+  const mobileBalanceHint =
+    mobileBalanceView === "sheet"
+      ? "Client sheet: total sale − purchases − recharges − cash expenses"
+      : mobileBalanceView === "incl_bank"
+        ? "Sheet balance minus bank/card operating expenses"
+        : "Total sale − total cost − total recharges − bank expenses";
 
   return (
     <section className="space-y-6">
@@ -391,10 +405,18 @@ export default function BusinessOverviewPage({
                     >
                       Cash + bank
                     </button>
+                    <button
+                      type="button"
+                      className={mobileBalanceView === "ledger" ? pillActive : pillIdle}
+                      onClick={() => setMobileBalanceView("ledger")}
+                    >
+                      With bank expense
+                    </button>
                   </div>
                   <p className="mt-4 text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
                     Last balance
                   </p>
+                  <p className="mt-1 text-xs text-[var(--lv-muted-strong)]">{mobileBalanceHint}</p>
                   <p
                     className={cn(
                       "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
@@ -417,6 +439,26 @@ export default function BusinessOverviewPage({
             <MetricMini label="Total recharges" value={formatCurrency(mobileTotals.supplierRicarche)} />
             <MetricMini label="Total expense" value={formatCurrency(mobileTotals.cashExpenses)} />
             <MetricMini label="Bank expenses" value={formatCurrency(mobileTotals.bankExpenses)} />
+
+            <MetricMini
+              label="Sim profit"
+              value={formatCurrency(mobileSummary.simProfit)}
+              profitTone={toneProfitNumeric(mobileSummary.simProfit)}
+            />
+            <MetricMini
+              label="Mobile profit"
+              value={formatCurrency(mobileSummary.mobileProfit)}
+              profitTone={toneProfitNumeric(mobileSummary.mobileProfit)}
+            />
+            <MetricMini
+              label="Access profit"
+              value={formatCurrency(mobileSummary.accessoryProfit)}
+              profitTone={toneProfitNumeric(mobileSummary.accessoryProfit)}
+            />
+            <MetricMini label="R.Wind" value={formatCurrency(mobileSummary.rwind)} />
+            <MetricMini label="R.Voda" value={formatCurrency(mobileSummary.rwoda)} />
+            <MetricMini label="Repairs" value={formatCurrency(mobileSummary.repair)} />
+            <MetricMini label="Extras" value={formatCurrency(mobileSummary.extras)} />
           </div>
         </div>
       )}
@@ -446,12 +488,32 @@ function NetProfitArrow({ profit }: { profit: number }) {
   return <TrendArrow direction={direction} size="lg" label={profit > 0 ? "Profit" : profit < 0 ? "Loss" : "Break-even"} />;
 }
 
-function MetricMini({ label, value, className }: { label: string; value: string; className?: string }) {
+function MetricMini({
+  label,
+  value,
+  className,
+  profitTone,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+  profitTone?: TrafficTone;
+}) {
   return (
     <BentoCell className={cn("justify-between gap-4 p-5 sm:p-6", className)}>
       <div className="min-w-0">
         <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[var(--lv-muted-strong)]">{label}</p>
-        <p className="lv-tabular-mono mt-2 text-xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-2xl">{value}</p>
+        <p
+          className={cn(
+            "lv-tabular-mono mt-2 text-xl font-semibold tracking-tight sm:text-2xl",
+            profitTone === "positive" && "text-[var(--lv-traffic-positive)]",
+            profitTone === "neutral" && "text-[var(--lv-traffic-neutral)]",
+            profitTone === "critical" && "text-[var(--lv-traffic-critical)]",
+            !profitTone && "text-[var(--lv-heading)]",
+          )}
+        >
+          {value}
+        </p>
       </div>
     </BentoCell>
   );

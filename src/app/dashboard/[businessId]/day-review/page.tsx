@@ -7,12 +7,12 @@ import {
   getMetadata,
   mergeSaleBuyNamedLines,
   metaString,
-  mobileProfitFromTransactions,
   parseMobileDailyFromTransactions,
   restaurantProfitFromTransactions,
   type MerchPairLine,
   type TransactionWithMeta,
 } from "@/lib/dashboard/daily-entry";
+import { buildMobileTransactionLedgerRow } from "@/lib/dashboard/mobile-transaction-ledger";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
@@ -256,7 +256,10 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
     [mobileDraft.accessory_sales, mobileDraft.accessory_buys],
   );
 
-  const mobileKpis = useMemo(() => mobileProfitFromTransactions(dayRows), [dayRows]);
+  const mobileSummary = useMemo(
+    () => buildMobileTransactionLedgerRow(dayRows, viewDate),
+    [dayRows, viewDate],
+  );
 
   const hasRestaurantEntry = useMemo(() => {
     const t = restaurantTotals;
@@ -386,12 +389,16 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
       {!txLoading && !loadError && businessType === "mobile_shop" ? (
         hasMobileEntry ? (
           <div className="space-y-5">
-            <Section title="Summary" hint="Totals derived from the same ledger lines as Overview.">
+            <Section title="Summary" hint="Key figures for this date.">
               <StatGrid
                 items={[
-                  { label: "Day profit (full P&L)", value: formatCurrency(mobileKpis.profit) },
-                  { label: "Client sheet balance", value: formatCurrency(mobileKpis.lastBalance) },
-                  { label: "Balance incl. bank expenses", value: formatCurrency(mobileKpis.lastBalanceWithBank) },
+                  { label: "Sim profit", value: formatCurrency(mobileSummary.simProfit) },
+                  { label: "Mobile profit", value: formatCurrency(mobileSummary.mobileProfit) },
+                  { label: "Access profit", value: formatCurrency(mobileSummary.accessoryProfit) },
+                  { label: "R.Wind", value: formatCurrency(mobileSummary.rwind) },
+                  { label: "R.Voda", value: formatCurrency(mobileSummary.rwoda) },
+                  { label: "Repairs", value: formatCurrency(mobileSummary.repair) },
+                  { label: "Extras", value: formatCurrency(mobileSummary.extras) },
                 ]}
               />
             </Section>
