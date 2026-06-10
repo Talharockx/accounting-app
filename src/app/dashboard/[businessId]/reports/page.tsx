@@ -36,6 +36,8 @@ import { formatCurrencyWhole } from "@/lib/utils/formatters";
 import { supabase } from "@/lib/supabaseClient";
 import { PressableButton } from "@/components/ui/pressable";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RestaurantReportsTable } from "@/components/dashboard/restaurant-reports-table";
+import { buildRestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
 import { cn } from "@/lib/utils/cn";
 
 type BusinessRow = {
@@ -226,6 +228,14 @@ export default function ReportsPage({
     }));
   }, [businessType, monthRange, profitLineEndISO, transactions]);
 
+  const restaurantReportMatrix = useMemo(() => {
+    if (businessType !== "restaurant" || !monthRange) return null;
+    const inMonth = transactions.filter(
+      (t) => t.transaction_date >= monthRange.start && t.transaction_date <= monthRange.end,
+    );
+    return buildRestaurantReportMatrix(inMonth, monthRange.start, monthRange.end);
+  }, [businessType, monthRange, transactions]);
+
   const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
 
   const handleDownloadPdf = async () => {
@@ -260,6 +270,10 @@ export default function ReportsPage({
               };
             })()
           : null;
+      const restaurantReportMatrixPdf =
+        businessType === "restaurant" && monthRange
+          ? buildRestaurantReportMatrix(inMonthTransactions, monthRange.start, monthRange.end)
+          : null;
       await downloadMonthlyReportPdf({
         businessName: business.name,
         dateRangeLabel: `${monthRange.start} → ${monthRange.end}`,
@@ -272,6 +286,7 @@ export default function ReportsPage({
         useClientLastBalanceLabels: businessType === "mobile_shop",
         mobileExecutiveSummary,
         mobileLedgerMatrix,
+        restaurantReportMatrix: restaurantReportMatrixPdf,
       });
       setPdfMessage("PDF report downloaded.");
       toast.success("Monthly report downloaded.");
@@ -361,7 +376,11 @@ export default function ReportsPage({
         </BentoCell>
         <BentoCell featured className="p-6">
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-accent)]">
-            {businessType === "mobile_shop" ? "Last balance" : "Net profit"}
+            {businessType === "mobile_shop"
+              ? "Last balance"
+              : businessType === "restaurant"
+                ? "Total profit / loss"
+                : "Net profit"}
           </p>
           <p
             className={cn(
@@ -453,6 +472,26 @@ export default function ReportsPage({
           />
         )}
       </section>
+
+      {businessType === "restaurant" ? (
+        <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
+          <h2 className="mb-2 text-lg font-bold tracking-tight text-[var(--lv-heading)]">Monthly entries</h2>
+          <p className="mb-6 max-w-3xl text-sm text-[var(--lv-muted-strong)]">
+            Date, bank &amp; cash sales, Glovo / Just Eat / Deliveroo, total sale, Kebab &amp; C &amp; C, other spesa
+            (one column per company name), rent, person expenses (one column per person), and total spesa — same layout
+            in the PDF export.
+          </p>
+          {txError ? (
+            <p className="text-sm font-medium text-[var(--lv-traffic-critical)]" role="alert">
+              {txError}
+            </p>
+          ) : txLoading ? (
+            <Skeleton className="h-48 w-full rounded-[1.625rem]" />
+          ) : (
+            <RestaurantReportsTable matrix={restaurantReportMatrix ?? { columns: [], rows: [], columnTotals: [] }} />
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

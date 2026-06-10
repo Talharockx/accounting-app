@@ -9,10 +9,11 @@ import { cn } from "@/lib/utils/cn";
 type BusinessesNavProps = {
   onAddRestaurant: () => void;
   onAddMobileShop: () => void;
+  onAddGrocery: () => void;
   onSignOutIntent: () => void;
 };
 
-export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onSignOutIntent }: BusinessesNavProps) {
+export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onAddGrocery, onSignOutIntent }: BusinessesNavProps) {
   const pillIdle =
     "inline-flex min-h-12 shrink-0 cursor-pointer touch-manipulation items-center rounded-[0.875rem] border border-[#ffffff10] px-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--lv-muted-strong)] transition-[transform,opacity] hover:border-[#ffffff24] hover:text-[var(--lv-heading)] active:scale-[0.98]";
   const pillAccent =
@@ -42,6 +43,9 @@ export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onSignOutInten
             </button>
             <button type="button" onClick={onAddMobileShop} className={pillIdle}>
               Add mobile shop
+            </button>
+            <button type="button" onClick={onAddGrocery} className={pillIdle}>
+              Add grocery
             </button>
           </nav>
         </div>

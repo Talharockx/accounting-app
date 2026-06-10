@@ -23,5 +23,12 @@ export function getUserFriendlyError(err: unknown, fallback = SYSTEM_UNAVAILABLE
     return SYSTEM_UNAVAILABLE;
   }
 
+  if (
+    m.includes("businesses_business_type_check") ||
+    (m.includes("check constraint") && m.includes("business_type"))
+  ) {
+    return "Grocery is not enabled in your database yet. In Supabase → SQL Editor, run supabase/allow_grocery_business_type.sql, then try again.";
+  }
+
   return message;
 }

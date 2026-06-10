@@ -3,7 +3,10 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { mobileProfitFromTransactions, restaurantProfitFromTransactions } from "@/lib/dashboard/daily-entry";
+import { mobileProfitFromTransactions } from "@/lib/dashboard/daily-entry";
+import { groceryProfitFromTransactions } from "@/lib/dashboard/grocery-daily-entry";
+import { restaurantProfitFromTransactions } from "@/lib/dashboard/restaurant-daily-entry";
+import type { BusinessType } from "@/lib/business-types";
 import { mobileLedgerSummaryFromTransactions } from "@/lib/dashboard/mobile-transaction-ledger";
 import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import type { TrafficTone } from "@/components/ui/sparkline";
@@ -21,7 +24,7 @@ import { formatCurrency } from "@/lib/utils/formatters";
 type Business = {
   id: string;
   name: string;
-  business_type: "restaurant" | "mobile_shop";
+  business_type: BusinessType;
 };
 
 type PeriodFilter = "today" | "pick" | "range";
@@ -211,6 +214,8 @@ export default function BusinessOverviewPage({
   }
 
   const isRestaurant = business.business_type === "restaurant";
+  const isGrocery = business.business_type === "grocery";
+  const groceryTotals = groceryProfitFromTransactions(transactions);
   const restaurantTotals = restaurantProfitFromTransactions(transactions);
   const mobileTotals = mobileProfitFromTransactions(transactions);
   const mobileSummary = mobileLedgerSummaryFromTransactions(transactions);
@@ -351,38 +356,71 @@ export default function BusinessOverviewPage({
         ) : null}
       </motion.div>
 
-      {isRestaurant ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-[minmax(128px,auto)]">
-          <BentoCell
-            featured
-            className="col-span-2 row-span-2 min-h-[240px] p-7 sm:p-8"
-          >
+      {isGrocery ? (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-min">
+          <BentoCell featured className="col-span-2 row-span-2 min-h-[260px] p-7 sm:p-8">
             <div className="flex h-full flex-col justify-between gap-6">
               <div>
                 <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
-                  Net profit
+                  Total profit
                 </p>
                 <p
                   className={cn(
                     "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
-                    toneProfitNumeric(restaurantTotals.profit) === "positive" && "text-[var(--lv-traffic-positive)]",
-                    toneProfitNumeric(restaurantTotals.profit) === "neutral" && "text-[var(--lv-traffic-neutral)]",
-                    toneProfitNumeric(restaurantTotals.profit) === "critical" && "text-[var(--lv-traffic-critical)]",
+                    toneProfitNumeric(groceryTotals.totalProfit) === "positive" && "text-[var(--lv-traffic-positive)]",
+                    toneProfitNumeric(groceryTotals.totalProfit) === "neutral" && "text-[var(--lv-traffic-neutral)]",
+                    toneProfitNumeric(groceryTotals.totalProfit) === "critical" && "text-[var(--lv-traffic-critical)]",
                   )}
                 >
-                  {formatCurrency(restaurantTotals.profit)}
+                  {formatCurrency(groceryTotals.totalProfit)}
                 </p>
+                <p className="mt-2 text-xs text-[var(--lv-muted-strong)]">Total sale − Spesa total</p>
               </div>
-              <div className="flex items-end">
-                <NetProfitArrow profit={restaurantTotals.profit} />
-              </div>
+              <NetProfitArrow profit={groceryTotals.totalProfit} />
             </div>
           </BentoCell>
-
-          <MetricMini label="Cash sales" value={formatCurrency(restaurantTotals.cash)} />
-          <MetricMini label="Bank sales" value={formatCurrency(restaurantTotals.bank)} />
-          <MetricMini label="Purchases" value={formatCurrency(restaurantTotals.purchases)} />
-          <MetricMini label="Expenses" value={formatCurrency(restaurantTotals.expenses)} />
+          <MetricMini label="Bank sale total" value={formatCurrency(groceryTotals.bankSaleTotal)} />
+          <MetricMini label="Cash sale total" value={formatCurrency(groceryTotals.cashSaleTotal)} />
+          <MetricMini label="Total sale" value={formatCurrency(groceryTotals.totalSale)} className="lg:col-span-2" />
+          <MetricMini label="Amadari" value={formatCurrency(groceryTotals.companyAmadari)} />
+          <MetricMini label="Cip./Pat." value={formatCurrency(groceryTotals.companyCipPat)} />
+          <MetricMini label="Eurospin" value={formatCurrency(groceryTotals.companyEurospin)} />
+          <MetricMini label="Aia" value={formatCurrency(groceryTotals.companyAia)} />
+          <MetricMini label="Spesa total" value={formatCurrency(groceryTotals.spesaTotal)} className="lg:col-span-2" />
+          <MetricMini label="Cheques total" value={formatCurrency(groceryTotals.cheques)} />
+        </div>
+      ) : isRestaurant ? (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-min">
+          <BentoCell featured className="col-span-2 row-span-2 min-h-[260px] p-7 sm:p-8">
+            <div className="flex h-full flex-col justify-between gap-6">
+              <div>
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+                  Total profit / loss
+                </p>
+                <p
+                  className={cn(
+                    "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
+                    toneProfitNumeric(restaurantTotals.totalProfit) === "positive" && "text-[var(--lv-traffic-positive)]",
+                    toneProfitNumeric(restaurantTotals.totalProfit) === "neutral" && "text-[var(--lv-traffic-neutral)]",
+                    toneProfitNumeric(restaurantTotals.totalProfit) === "critical" && "text-[var(--lv-traffic-critical)]",
+                  )}
+                >
+                  {formatCurrency(restaurantTotals.totalProfit)}
+                </p>
+                <p className="mt-2 text-xs text-[var(--lv-muted-strong)]">Total sale − Total spesa</p>
+              </div>
+              <NetProfitArrow profit={restaurantTotals.totalProfit} />
+            </div>
+          </BentoCell>
+          <MetricMini label="Total bank sale" value={formatCurrency(restaurantTotals.bankSaleTotal)} />
+          <MetricMini label="Total cash sale" value={formatCurrency(restaurantTotals.cashSaleTotal)} />
+          <MetricMini
+            label="Glovo, Just Eat, Deliveroo"
+            value={formatCurrency(restaurantTotals.companySaleTotal)}
+            className="lg:col-span-2"
+          />
+          <MetricMini label="Total sale" value={formatCurrency(restaurantTotals.totalSale)} />
+          <MetricMini label="Total spesa" value={formatCurrency(restaurantTotals.totalSpesa)} className="lg:col-span-2" />
         </div>
       ) : (
         <div className="space-y-3">
@@ -463,7 +501,7 @@ export default function BusinessOverviewPage({
         </div>
       )}
 
-      {!txLoading && transactions.length === 0 ? (
+      {!isGrocery && !txLoading && transactions.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}

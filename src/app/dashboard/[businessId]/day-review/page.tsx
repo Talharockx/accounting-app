@@ -3,26 +3,29 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  SOURCE_RESTAURANT,
-  getMetadata,
   mergeSaleBuyNamedLines,
-  metaString,
   parseMobileDailyFromTransactions,
-  restaurantProfitFromTransactions,
   type MerchPairLine,
   type TransactionWithMeta,
 } from "@/lib/dashboard/daily-entry";
+import {
+  parseRestaurantDailyFromTransactions,
+  restaurantDayHasContent,
+  restaurantProfitFromTransactions,
+  RESTAURANT_DELIVERY_PLATFORMS,
+  RESTAURANT_SPESA_COMPANIES,
+} from "@/lib/dashboard/restaurant-daily-entry";
 import { buildMobileTransactionLedgerRow } from "@/lib/dashboard/mobile-transaction-ledger";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { groceryDayHasContent, groceryProfitFromTransactions, parseGroceryDailyFromTransactions } from "@/lib/dashboard/grocery-daily-entry";
+import { businessTypeLabel, normalizeBusinessType, type BusinessType } from "@/lib/business-types";
 import { formatCurrency } from "@/lib/utils/formatters";
 import { getTodayLocalISO } from "@/lib/utils/date-range";
 import { isBlankNote, noteToPlainText } from "@/lib/utils/rich-text";
-
-type BusinessType = "restaurant" | "mobile_shop";
 
 function displayName(s: string): string {
   const t = s.trim();
@@ -169,9 +172,8 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
           return;
         }
         if (data?.name) setBusinessName(data.name as string);
-        if (data?.business_type === "mobile_shop" || data?.business_type === "restaurant") {
-          setBusinessType(data.business_type as BusinessType);
-        }
+        const bt = normalizeBusinessType(data?.business_type);
+        if (bt) setBusinessType(bt);
       } catch (caught) {
         if (!cancelled) setLoadError(getUserFriendlyError(caught, SYSTEM_UNAVAILABLE));
       } finally {
@@ -227,19 +229,10 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
     [rows, viewDate],
   );
 
+  const restaurantDraft = useMemo(() => parseRestaurantDailyFromTransactions(dayRows, viewDate), [dayRows, viewDate]);
   const restaurantTotals = useMemo(() => restaurantProfitFromTransactions(dayRows), [dayRows]);
 
-  const restaurantNotes = useMemo(() => {
-    let noteText = "";
-    for (const row of dayRows) {
-      const meta = getMetadata(row.metadata, row.description);
-      if (metaString(meta, "source") === SOURCE_RESTAURANT && metaString(meta, "line") === "daily_notes") {
-        const n = typeof meta["notes"] === "string" ? meta["notes"] : "";
-        if (!isBlankNote(n)) noteText = n;
-      }
-    }
-    return noteText;
-  }, [dayRows]);
+  const restaurantNotes = useMemo(() => restaurantDraft.notes, [restaurantDraft.notes]);
 
   const mobileDraft = useMemo(
     () => parseMobileDailyFromTransactions(dayRows, viewDate),
@@ -261,13 +254,18 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
     [dayRows, viewDate],
   );
 
-  const hasRestaurantEntry = useMemo(() => {
-    const t = restaurantTotals;
-    return (
-      t.cash + t.bank + t.purchases + t.expenses > 0 ||
-      !isBlankNote(restaurantNotes)
-    );
-  }, [restaurantTotals, restaurantNotes]);
+  const groceryDraft = useMemo(() => parseGroceryDailyFromTransactions(dayRows, viewDate), [dayRows, viewDate]);
+  const groceryTotals = useMemo(() => groceryProfitFromTransactions(dayRows), [dayRows]);
+
+  const hasGroceryEntry = useMemo(
+    () => groceryDayHasContent(dayRows) || !isBlankNote(groceryDraft.notes),
+    [dayRows, groceryDraft.notes],
+  );
+
+  const hasRestaurantEntry = useMemo(
+    () => restaurantDayHasContent(dayRows) || !isBlankNote(restaurantNotes),
+    [dayRows, restaurantNotes],
+  );
 
   const hasMobileEntry = useMemo(() => {
     if (mobileDraft.sim_buy > 0 || mobileDraft.sim_sale > 0) return true;
@@ -312,7 +310,7 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">Day review</h1>
             {businessName ? (
               <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-                {businessName} · {businessType === "restaurant" ? "Restaurant" : "Mobile shop"}
+                {businessName} · {businessTypeLabel(businessType)}
               </p>
             ) : null}
           </div>
@@ -352,21 +350,121 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
         </div>
       ) : null}
 
-      {!txLoading && !loadError && businessType === "restaurant" ? (
-        hasRestaurantEntry ? (
+      {!txLoading && !loadError && businessType === "grocery" ? (
+        hasGroceryEntry ? (
           <div className="space-y-5">
-            <Section title="Summary" hint="Figures from saved daily-entry lines for this date.">
+            <Section title="Summary" hint="Totals from saved grocery daily entry for this date.">
               <StatGrid
                 items={[
-                  { label: "Cash sales", value: formatCurrency(restaurantTotals.cash) },
-                  { label: "Bank sales", value: formatCurrency(restaurantTotals.bank) },
-                  { label: "Purchases", value: formatCurrency(restaurantTotals.purchases) },
-                  { label: "Expenses", value: formatCurrency(restaurantTotals.expenses) },
-                  { label: "Day profit (cash + bank − purchases − expenses)", value: formatCurrency(restaurantTotals.profit) },
+                  { label: "Bank sale total", value: formatCurrency(groceryTotals.bankSaleTotal) },
+                  { label: "Cash sale total", value: formatCurrency(groceryTotals.cashSaleTotal) },
+                  { label: "Total sale", value: formatCurrency(groceryTotals.totalSale) },
+                  { label: "Amadari", value: formatCurrency(groceryTotals.companyAmadari) },
+                  { label: "Cip./Pat.", value: formatCurrency(groceryTotals.companyCipPat) },
+                  { label: "Eurospin", value: formatCurrency(groceryTotals.companyEurospin) },
+                  { label: "Aia", value: formatCurrency(groceryTotals.companyAia) },
+                  { label: "Spesa total", value: formatCurrency(groceryTotals.spesaTotal) },
+                  { label: "Cheques total", value: formatCurrency(groceryTotals.cheques) },
+                  { label: "Total profit", value: formatCurrency(groceryTotals.totalProfit) },
                 ]}
               />
             </Section>
-            <Section title="Notes">
+            <Section title="Day notes">
+              {isBlankNote(groceryDraft.notes) ? (
+                <p className="text-sm text-[var(--lv-muted-strong)]">No notes for this date.</p>
+              ) : (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--lv-heading)]">
+                  {noteToPlainText(groceryDraft.notes)}
+                </p>
+              )}
+            </Section>
+          </div>
+        ) : (
+          <div className="rounded-[1.625rem] border border-dashed border-[color-mix(in_srgb,var(--lv-glass-edge)_55%,transparent)] bg-[var(--lv-liquid-fill)] px-6 py-12 text-center backdrop-blur-md">
+            <p className="text-base font-semibold text-[var(--lv-heading)]">No grocery entry for this date</p>
+            <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
+              Save a day from Daily Entry, or pick another date.
+            </p>
+          </div>
+        )
+      ) : null}
+
+      {!txLoading && !loadError && businessType === "restaurant" ? (
+        hasRestaurantEntry ? (
+          <div className="space-y-5">
+            <Section title="Summary" hint="Totals from saved restaurant daily entry for this date.">
+              <StatGrid
+                items={[
+                  { label: "Total bank sale", value: formatCurrency(restaurantTotals.bankSaleTotal) },
+                  { label: "Total cash sale", value: formatCurrency(restaurantTotals.cashSaleTotal) },
+                  {
+                    label: "Glovo, Just Eat, Deliveroo",
+                    value: formatCurrency(restaurantTotals.companySaleTotal),
+                  },
+                  { label: "Total sale", value: formatCurrency(restaurantTotals.totalSale) },
+                  { label: "Kebab purchase", value: formatCurrency(restaurantTotals.kebabPurchase) },
+                  { label: "C & C purchase", value: formatCurrency(restaurantTotals.ccPurchase) },
+                  { label: "Other spesa", value: formatCurrency(restaurantTotals.otherSpesa) },
+                  { label: "Rent", value: formatCurrency(restaurantTotals.rent) },
+                  { label: "Person purchases", value: formatCurrency(restaurantTotals.personPurchases) },
+                  { label: "Total spesa", value: formatCurrency(restaurantTotals.totalSpesa) },
+                  { label: "Total profit / loss", value: formatCurrency(restaurantTotals.totalProfit) },
+                ]}
+              />
+            </Section>
+
+            <Section title="Shop sales" hint="Bank and cash turnover for the day.">
+              <StatGrid
+                items={[
+                  { label: "Bank sale", value: formatCurrency(restaurantDraft.bank_sales) },
+                  { label: "Cash sale", value: formatCurrency(restaurantDraft.cash_sales) },
+                ]}
+              />
+            </Section>
+
+            <Section title="Company sales" hint="Delivery platform sales — Glovo, Just Eat, Deliveroo.">
+              <NamedAmountTable
+                rows={restaurantDraft.company_sales.map((r) => ({
+                  item_name: RESTAURANT_DELIVERY_PLATFORMS.find((p) => p.key === r.company_key)?.label ?? r.company_key,
+                  amount: r.amount,
+                }))}
+                nameHeader="Company"
+                emptyLabel="No company sales for this date."
+              />
+            </Section>
+
+            <Section title="Company spesa" hint="Kebab and C & C supplier purchases.">
+              <NamedAmountTable
+                rows={restaurantDraft.company_spesa.map((r) => ({
+                  item_name: RESTAURANT_SPESA_COMPANIES.find((c) => c.key === r.company_key)?.label ?? r.company_key,
+                  amount: r.amount,
+                }))}
+                nameHeader="Company"
+                emptyLabel="No company spesa for this date."
+              />
+            </Section>
+
+            <Section title="Other spesa" hint="Other supplier or company costs with free-text names.">
+              <NamedAmountTable
+                rows={restaurantDraft.other_spesa}
+                nameHeader="Company / detail"
+                emptyLabel="No other spesa for this date."
+              />
+            </Section>
+
+            <Section title="Rent" hint="Daily or periodic rent (Affitto).">
+              <StatGrid items={[{ label: "Rent", value: formatCurrency(restaurantDraft.rent) }]} />
+            </Section>
+
+            <Section title="Person purchases" hint="Named person purchases for this day.">
+              <NamedAmountTable
+                rows={restaurantDraft.person_purchases}
+                nameHeader="Person"
+                emptyLabel="No person purchases for this date."
+              />
+            </Section>
+
+            <Section title="Day notes">
               {isBlankNote(restaurantNotes) ? (
                 <p className="text-sm text-[var(--lv-muted-strong)]">No notes for this date.</p>
               ) : (

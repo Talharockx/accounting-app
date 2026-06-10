@@ -1,11 +1,11 @@
-import {
-  mobileProfitFromTransactions,
-  restaurantProfitFromTransactions,
-  type TransactionWithMeta,
-} from "@/lib/dashboard/daily-entry";
+import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
+import { mobileProfitFromTransactions } from "@/lib/dashboard/daily-entry";
+import { restaurantProfitFromTransactions } from "@/lib/dashboard/restaurant-daily-entry";
+import type { ReportsBusinessType } from "@/lib/business-types";
+import { groceryProfitFromTransactions } from "@/lib/dashboard/grocery-daily-entry";
 import { addCalendarDaysISO } from "@/lib/utils/date-range";
 
-export type ReportsBusinessType = "restaurant" | "mobile_shop";
+export type { ReportsBusinessType };
 
 export type DailyFinancialBreakdown = {
   date: string;
@@ -25,16 +25,24 @@ export function dailySalesExpensesProfit(
   dateISO: string,
 ): Omit<DailyFinancialBreakdown, "date"> {
   const dayRows = rows.filter((r) => r.transaction_date === dateISO);
+  if (businessType === "grocery") {
+    const t = groceryProfitFromTransactions(rows);
+    return {
+      sales: t.totalSale,
+      purchases: 0,
+      operatingExpenses: t.spesaTotal,
+      expenses: t.spesaTotal,
+      profit: t.totalProfit,
+    };
+  }
   if (businessType === "restaurant") {
     const t = restaurantProfitFromTransactions(dayRows);
-    const purchases = t.purchases;
-    const operating = t.expenses;
     return {
-      sales: t.cash + t.bank,
-      purchases,
-      operatingExpenses: operating,
-      expenses: purchases + operating,
-      profit: t.profit,
+      sales: t.totalSale,
+      purchases: t.kebabPurchase + t.ccPurchase,
+      operatingExpenses: t.otherSpesa + t.rent + t.personPurchases,
+      expenses: t.totalSpesa,
+      profit: t.totalProfit,
     };
   }
   const t = mobileProfitFromTransactions(dayRows);

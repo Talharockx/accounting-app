@@ -11,6 +11,7 @@ import { BentoCell } from "@/components/ui/bento-cell";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
+import { businessTypeLabel, businessTypePlural, normalizeBusinessType } from "@/lib/business-types";
 import { cn } from "@/lib/utils/cn";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -25,14 +26,6 @@ type Business = {
   contact_email: string;
 };
 
-function normalizeBusinessType(raw: unknown): BusinessType | null {
-  if (typeof raw !== "string") return null;
-  const t = raw.trim().toLowerCase().replace(/\s+/g, "_");
-  if (t === "restaurant") return "restaurant";
-  if (t === "mobile_shop") return "mobile_shop";
-  if (t === "mobile" || t === "mobileshop" || t === "phone_shop" || t === "phoneshop") return "mobile_shop";
-  return null;
-}
 
 function coerceCreatedAt(raw: unknown): string {
   if (typeof raw === "string" && raw.length > 0) return raw;
@@ -104,6 +97,11 @@ export default function DashboardPage() {
 
   const handleNavAddMobileShop = () => {
     setSelectedType("mobile_shop");
+    scrollToAddBusiness();
+  };
+
+  const handleNavAddGrocery = () => {
+    setSelectedType("grocery");
     scrollToAddBusiness();
   };
 
@@ -265,6 +263,7 @@ export default function DashboardPage() {
       <BusinessesNav
         onAddRestaurant={handleNavAddRestaurant}
         onAddMobileShop={handleNavAddMobileShop}
+        onAddGrocery={handleNavAddGrocery}
         onSignOutIntent={() => setSignOutConfirm(true)}
       />
 
@@ -321,7 +320,7 @@ export default function DashboardPage() {
             onSubmit={handleCreateBusiness}
             saving={saving}
             title="Choose a business type"
-            subtitle="Add a restaurant or mobile shop to start tracking sales and expenses."
+            subtitle="Add a restaurant, mobile shop, or grocery store to start tracking sales and expenses."
           />
         ) : null}
 
@@ -332,7 +331,7 @@ export default function DashboardPage() {
                 Modular workspaces
               </h2>
               <p className="mb-6 max-w-2xl text-sm text-[var(--lv-muted-strong)]">
-                Choose restaurant or mobile shop to list those workspaces.
+                Choose restaurant, mobile shop, or grocery to list those workspaces.
               </p>
               <div className="mb-6 max-w-md space-y-2">
                 <label htmlFor="workspace-business-type" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
@@ -356,6 +355,7 @@ export default function DashboardPage() {
                   <option value="">Choose type…</option>
                   <option value="restaurant">Restaurant</option>
                   <option value="mobile_shop">Mobile shop</option>
+                  <option value="grocery">Grocery</option>
                 </select>
               </div>
 
@@ -363,16 +363,16 @@ export default function DashboardPage() {
                 <div className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_40%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_55%,transparent)] px-6 py-14 text-center backdrop-blur-md">
                   <p className="text-sm font-medium text-[var(--lv-heading)]">No type selected</p>
                   <p className="mx-auto mt-2 max-w-md text-sm text-[var(--lv-muted-strong)]">
-                    Pick <span className="font-semibold text-[var(--lv-heading)]">Restaurant</span> or{" "}
-                    <span className="font-semibold text-[var(--lv-heading)]">Mobile shop</span> to see your workspaces
-                    here.
+                    Pick <span className="font-semibold text-[var(--lv-heading)]">Restaurant</span>,{" "}
+                    <span className="font-semibold text-[var(--lv-heading)]">Mobile shop</span>, or{" "}
+                    <span className="font-semibold text-[var(--lv-heading)]">Grocery</span> to see your workspaces here.
                   </p>
                 </div>
               ) : displayedWorkspaces.length === 0 ? (
                 <div className="space-y-4 rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
                   <p>
-                    No {modularWorkspaceType === "restaurant" ? "restaurants" : "mobile shops"} in this account&apos;s
-                    list yet. Add one below or from the top bar.
+                    No {businessTypePlural(modularWorkspaceType)} in this account&apos;s list yet. Add one below or from
+                    the top bar.
                   </p>
                   {hasBusinesses && countSelectedType === 0 ? (
                     <div className="rounded-lg border border-[color-mix(in_srgb,var(--lv-glass-edge)_50%,transparent)] bg-[var(--lv-card)]/80 p-4 text-xs leading-relaxed text-[var(--lv-muted-strong)]">
@@ -426,7 +426,7 @@ export default function DashboardPage() {
                         className="flex flex-1 flex-col p-7 transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--lv-accent)_06%,transparent)]"
                       >
                         <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-accent)]">
-                          {business.business_type === "restaurant" ? "Restaurant" : "Mobile shop"}
+                          {businessTypeLabel(business.business_type)}
                         </p>
                         <h3 className="mt-4 text-xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-2xl">
                           {business.name}
@@ -482,7 +482,7 @@ export default function DashboardPage() {
               onSubmit={handleCreateBusiness}
               saving={saving}
               title="Add another business"
-              subtitle="Create a restaurant or mobile shop without leaving this page. Use the top bar for quick access."
+              subtitle="Create a restaurant, mobile shop, or grocery store without leaving this page. Use the top bar for quick access."
             />
           </div>
         ) : null}

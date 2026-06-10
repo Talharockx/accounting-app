@@ -3,17 +3,26 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
-  SOURCE_RESTAURANT,
   buildMobileDailyRows,
-  buildRestaurantDailyRows,
   getMetadata,
   mergeSaleBuyNamedLines,
   merchFormStringsToSaleBuy,
   metaString,
   parseMobileDailyFromTransactions,
   parseNonNegative,
-  restaurantProfitFromTransactions,
 } from "@/lib/dashboard/daily-entry";
+import {
+  buildRestaurantDailyRows,
+  emptyCompanySaleRow,
+  emptySpesaCompanyRow,
+  hydrateCompanySaleRows,
+  hydrateSpesaCompanyRows,
+  parseRestaurantDailyFromTransactions,
+  restaurantCompanySalesFromForm,
+  restaurantCompanySpesaFromForm,
+  restaurantDayHasContent,
+  restaurantNamedLinesFromForm,
+} from "@/lib/dashboard/restaurant-daily-entry";
 import {
   insertTransactionsWithMetadataFallback,
   selectWithMetadataColumnFallback,
@@ -32,11 +41,40 @@ import {
   type NamedRowStr,
 } from "@/components/dashboard/mobile-shop-fields";
 import { GlassFormCard } from "@/components/ui/glass-form-card";
+import {
+  ChequesBlock,
+  CompanyExpensesBlock,
+  GroceryFixedExpensesBlock,
+  PersonSalesBlock,
+  emptyCheque,
+  emptyPersonSale,
+  useChequeListHelpers,
+  usePersonSaleListHelpers,
+  type ChequeRowStr,
+  type PersonSaleRowStr,
+} from "@/components/dashboard/grocery-shop-fields";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
+import { businessTypeLabel, type BusinessType } from "@/lib/business-types";
+import {
+  buildGroceryDailyRows,
+  emptyGroceryFixedSections,
+  groceryChequesFromForm,
+  groceryFixedFromForm,
+  groceryNamedLinesFromForm,
+  groceryPersonSalesFromForm,
+  groceryProfitFromTransactions,
+  hydrateCompanyExpenseRows,
+  hydrateGroceryFixedSections,
+  parseGroceryDailyFromTransactions,
+  emptyCompanyExpenseRows,
+} from "@/lib/dashboard/grocery-daily-entry";
+import {
+  RestaurantDailyEntryFields,
+  useCompanySaleListHelpers,
+  useSpesaCompanyListHelpers,
+} from "@/components/dashboard/restaurant-shop-fields";
 import { isBlankNote } from "@/lib/utils/rich-text";
-
-type BusinessType = "restaurant" | "mobile_shop";
 
 type BusinessRow = {
   id: string;
@@ -66,8 +104,11 @@ export default function DailyEntryPage({
 
   const [restCash, setRestCash] = useState("0");
   const [restBank, setRestBank] = useState("0");
-  const [restPurchases, setRestPurchases] = useState("0");
-  const [restExpenses, setRestExpenses] = useState("0");
+  const [restCompanySales, setRestCompanySales] = useState([emptyCompanySaleRow()]);
+  const [restCompanySpesa, setRestCompanySpesa] = useState([emptySpesaCompanyRow()]);
+  const [restOtherSpesa, setRestOtherSpesa] = useState<NamedRowStr[]>([emptyNamed()]);
+  const [restRent, setRestRent] = useState("0");
+  const [restPersonPurchases, setRestPersonPurchases] = useState<NamedRowStr[]>([emptyNamed()]);
   const [restNotes, setRestNotes] = useState("");
 
   const [simBuy, setSimBuy] = useState("0");
@@ -82,6 +123,37 @@ export default function DailyEntryPage({
   const [mobileNotes, setMobileNotes] = useState("");
   const [cashExpenses, setCashExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
   const [bankExpenses, setBankExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
+
+  const [groceryBank, setGroceryBank] = useState("0");
+  const [groceryCash, setGroceryCash] = useState("0");
+  const [personSales, setPersonSales] = useState<PersonSaleRowStr[]>([emptyPersonSale()]);
+  const [companyExpenses, setCompanyExpenses] = useState<NamedRowStr[]>(emptyCompanyExpenseRows());
+  const [personExpenses, setPersonExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
+  const [cheques, setCheques] = useState<ChequeRowStr[]>([emptyCheque()]);
+  const [fixedExpenseSections, setFixedExpenseSections] = useState(emptyGroceryFixedSections);
+  const [groceryNotes, setGroceryNotes] = useState("");
+
+  const applyRestaurantDraftStrings = useCallback(
+    (draft: ReturnType<typeof parseRestaurantDailyFromTransactions>) => {
+      setRestBank(String(draft.bank_sales));
+      setRestCash(String(draft.cash_sales));
+      setRestCompanySales(hydrateCompanySaleRows(draft.company_sales));
+      setRestCompanySpesa(hydrateSpesaCompanyRows(draft.company_spesa));
+      setRestOtherSpesa(
+        draft.other_spesa.length
+          ? draft.other_spesa.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
+          : [emptyNamed()],
+      );
+      setRestRent(String(draft.rent));
+      setRestPersonPurchases(
+        draft.person_purchases.length
+          ? draft.person_purchases.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
+          : [emptyNamed()],
+      );
+      setRestNotes(draft.notes ?? "");
+    },
+    [],
+  );
 
   const applyMobileDraftStrings = useCallback((draft: ReturnType<typeof parseMobileDailyFromTransactions>) => {
     setSimBuy(String(draft.sim_buy));
@@ -130,36 +202,58 @@ export default function DailyEntryPage({
     );
   }, []);
 
+  const applyGroceryDraftStrings = useCallback(
+    (draft: ReturnType<typeof parseGroceryDailyFromTransactions>) => {
+      setGroceryBank(String(draft.bank_sales));
+      setGroceryCash(String(draft.cash_sales));
+      setPersonSales(
+        draft.person_sales.map((r) => ({
+          itemName: r.item_name,
+          bank: String(r.bank),
+          cash: String(r.cash),
+        })),
+      );
+      setCompanyExpenses(hydrateCompanyExpenseRows(draft.company_expenses));
+      setPersonExpenses(
+        draft.person_expenses.map((r) => ({
+          itemName: r.item_name,
+          amount: String(r.amount),
+        })),
+      );
+      setCheques(
+        draft.cheques.map((r) => ({
+          itemName: r.item_name,
+          amount: String(r.amount),
+          dueDate: r.due_date,
+          paid: r.paid,
+        })),
+      );
+      setFixedExpenseSections(hydrateGroceryFixedSections(draft.fixed_expenses));
+      setGroceryNotes(draft.notes ?? "");
+    },
+    [],
+  );
+
   const hydrateForms = useCallback(
     (bt: BusinessType, rows: TxRecord[], dateISO: string) => {
       const dayRows = rows.filter((row) => row.transaction_date === dateISO);
 
       if (bt === "restaurant") {
-        const totals = restaurantProfitFromTransactions(dayRows);
-        setRestCash(String(totals.cash));
-        setRestBank(String(totals.bank));
-        setRestPurchases(String(totals.purchases));
-        setRestExpenses(String(totals.expenses));
+        const draft = parseRestaurantDailyFromTransactions(dayRows, dateISO);
+        applyRestaurantDraftStrings(draft);
+        return;
+      }
 
-        let noteText = "";
-        for (const row of dayRows) {
-          const meta = getMetadata(row.metadata, row.description);
-          if (
-            metaString(meta, "source") === SOURCE_RESTAURANT &&
-            metaString(meta, "line") === "daily_notes"
-          ) {
-            const notes = typeof meta["notes"] === "string" ? (meta["notes"] as string) : "";
-            if (!isBlankNote(notes)) noteText = notes;
-          }
-        }
-        setRestNotes(noteText);
+      if (bt === "grocery") {
+        const draft = parseGroceryDailyFromTransactions(dayRows, dateISO);
+        applyGroceryDraftStrings(draft);
         return;
       }
 
       const draft = parseMobileDailyFromTransactions(dayRows, dateISO);
       applyMobileDraftStrings(draft);
     },
-    [applyMobileDraftStrings],
+    [applyMobileDraftStrings, applyGroceryDraftStrings, applyRestaurantDraftStrings],
   );
 
   const loadDay = useCallback(
@@ -264,6 +358,71 @@ export default function DailyEntryPage({
 
   const namedListHelpers = useNamedListHelpers();
   const merchListHelpers = useMerchListHelpers();
+  const personSaleHelpers = usePersonSaleListHelpers();
+  const chequeHelpers = useChequeListHelpers();
+  const companySaleHelpers = useCompanySaleListHelpers();
+  const spesaCompanyHelpers = useSpesaCompanyListHelpers();
+
+  const restaurantEntryHasContent = () => {
+    const draft = {
+      bank_sales: parseNonNegative(restBank),
+      cash_sales: parseNonNegative(restCash),
+      company_sales: restaurantCompanySalesFromForm(restCompanySales),
+      company_spesa: restaurantCompanySpesaFromForm(restCompanySpesa),
+      other_spesa: restaurantNamedLinesFromForm(restOtherSpesa),
+      rent: parseNonNegative(restRent),
+      person_purchases: restaurantNamedLinesFromForm(restPersonPurchases),
+      notes: restNotes,
+    };
+    const previewRows = buildRestaurantDailyRows({
+      business_id: businessId || "preview",
+      created_by_user_id: userId || "preview",
+      transaction_date: entryDate,
+      ...draft,
+    }).map((row) => ({
+      amount: row.amount,
+      transaction_type: row.transaction_type,
+      description: row.description,
+      transaction_date: row.transaction_date,
+      metadata: row.metadata,
+    }));
+    return restaurantDayHasContent(previewRows) || !isBlankNote(restNotes);
+  };
+  const groceryEntryHasContent = () => {
+    const draft = {
+      bank_sales: parseNonNegative(groceryBank),
+      cash_sales: parseNonNegative(groceryCash),
+      person_sales: groceryPersonSalesFromForm(personSales),
+      company_expenses: groceryNamedLinesFromForm(companyExpenses),
+      person_expenses: groceryNamedLinesFromForm(personExpenses),
+      kametti_expenses: [],
+      cheques: groceryChequesFromForm(cheques),
+      fixed_expenses: groceryFixedFromForm(fixedExpenseSections),
+      notes: groceryNotes,
+    };
+    const totals = groceryProfitFromTransactions(
+      buildGroceryDailyRows({
+        business_id: businessId || "preview",
+        created_by_user_id: userId || "preview",
+        transaction_date: entryDate,
+        ...draft,
+      }).map((row) => ({
+        amount: row.amount,
+        transaction_type: row.transaction_type,
+        description: row.description,
+        transaction_date: row.transaction_date,
+        metadata: row.metadata,
+      })),
+    );
+    return (
+      totals.totalSale +
+        totals.spesaTotal +
+        totals.personExpenses +
+        parseNonNegative(groceryBank) +
+        parseNonNegative(groceryCash) >
+        0 || !isBlankNote(groceryNotes)
+    );
+  };
 
   const mobileEntryHasContent = () => {
     const sumNamed = (list: NamedRowStr[]) =>
@@ -294,13 +453,13 @@ export default function DailyEntryPage({
     setError("");
 
     if (businessType === "restaurant") {
-      const cash = parseNonNegative(restCash);
-      const bank = parseNonNegative(restBank);
-      const purchases = parseNonNegative(restPurchases);
-      const expenses = parseNonNegative(restExpenses);
-      const hasMoney = cash + bank + purchases + expenses > 0;
-      const hasNotes = !isBlankNote(restNotes);
-      if (!hasMoney && !hasNotes) {
+      if (!restaurantEntryHasContent()) {
+        toast.error("Add at least one amount or a note before saving.");
+        setSaving(false);
+        return;
+      }
+    } else if (businessType === "grocery") {
+      if (!groceryEntryHasContent()) {
         toast.error("Add at least one amount or a note before saving.");
         setSaving(false);
         return;
@@ -331,11 +490,34 @@ export default function DailyEntryPage({
           business_id: businessId,
           created_by_user_id: userId,
           transaction_date: entryDate,
-          cash_sales: parseNonNegative(restCash),
           bank_sales: parseNonNegative(restBank),
-          purchases: parseNonNegative(restPurchases),
-          expenses: parseNonNegative(restExpenses),
+          cash_sales: parseNonNegative(restCash),
+          company_sales: restaurantCompanySalesFromForm(restCompanySales),
+          company_spesa: restaurantCompanySpesaFromForm(restCompanySpesa),
+          other_spesa: restaurantNamedLinesFromForm(restOtherSpesa),
+          rent: parseNonNegative(restRent),
+          person_purchases: restaurantNamedLinesFromForm(restPersonPurchases),
           notes: restNotes,
+        });
+
+        if (rows.length) {
+          const { error: insertError } = await insertTransactionsWithMetadataFallback(supabase, rows);
+          if (insertError) throw insertError;
+        }
+      } else if (businessType === "grocery") {
+        const rows = buildGroceryDailyRows({
+          business_id: businessId,
+          created_by_user_id: userId,
+          transaction_date: entryDate,
+          bank_sales: parseNonNegative(groceryBank),
+          cash_sales: parseNonNegative(groceryCash),
+          person_sales: groceryPersonSalesFromForm(personSales),
+          company_expenses: groceryNamedLinesFromForm(companyExpenses),
+          person_expenses: groceryNamedLinesFromForm(personExpenses),
+          kametti_expenses: [],
+          cheques: groceryChequesFromForm(cheques),
+          fixed_expenses: groceryFixedFromForm(fixedExpenseSections),
+          notes: groceryNotes,
         });
 
         if (rows.length) {
@@ -381,7 +563,7 @@ export default function DailyEntryPage({
       }
 
       toast.success(
-        `${businessType === "restaurant" ? "Restaurant" : "Mobile shop"} daily entry saved successfully.`,
+        `${businessTypeLabel(businessType)} daily entry saved successfully.`,
       );
       await loadDay(businessId, entryDate, businessType, true);
     } catch (caughtError) {
@@ -396,7 +578,7 @@ export default function DailyEntryPage({
   return (
     <GlassFormCard>
         <h1 className="text-2xl font-semibold text-[var(--lv-heading)]">
-          Daily entry · {businessType === "restaurant" ? "Restaurant" : "Mobile shop"}
+          Daily entry · {businessTypeLabel(businessType)}
         </h1>
         <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
           Amounts cannot be negative. Saving replaces Supabase rows for this business/date, then inserts the new
@@ -423,40 +605,98 @@ export default function DailyEntryPage({
               required
             />
 
-            {businessType === "restaurant" ? (
-              <div className="flex flex-col gap-4">
-                {[
-                  { id: "cash", label: "Cash sales", value: restCash, setter: setRestCash },
-                  { id: "bank", label: "Bank sales", value: restBank, setter: setRestBank },
-                  {
-                    id: "purch",
-                    label: "Purchases",
-                    value: restPurchases,
-                    setter: setRestPurchases,
-                  },
-                  { id: "exp", label: "Expenses", value: restExpenses, setter: setRestExpenses },
-                ].map((field) => (
-                  <MidnightField
-                    key={field.id}
-                    id={field.id}
-                    label={field.label}
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={field.value}
-                    onChange={(event) => clampInput(event.target.value, field.setter)}
-                  />
-                ))}
+            {businessType === "grocery" ? (
+              <div className="flex flex-col gap-8">
+                <section className="flex flex-col gap-3">
+                  <h3 className="text-lg font-semibold text-[var(--lv-heading)]">Shop sales</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <MidnightField
+                      id="grocery-bank"
+                      label="Bank sale"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={groceryBank}
+                      onChange={(e) => clampInput(e.target.value, setGroceryBank)}
+                    />
+                    <MidnightField
+                      id="grocery-cash"
+                      label="Cash sale"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={groceryCash}
+                      onChange={(e) => clampInput(e.target.value, setGroceryCash)}
+                    />
+                  </div>
+                </section>
+
+                <PersonSalesBlock
+                  idPrefix="g-person-sale"
+                  rows={personSales}
+                  setRows={setPersonSales}
+                  helpers={personSaleHelpers}
+                />
+
+                <CompanyExpensesBlock
+                  idPrefix="g-company-exp"
+                  rows={companyExpenses}
+                  setRows={setCompanyExpenses}
+                />
+
+                <NamedLinesOnly
+                  idPrefix="g-person-exp"
+                  title="Expenses by person"
+                  hint="Person name and expense amount for that day."
+                  nameFieldLabel="Person name"
+                  rows={personExpenses}
+                  setRows={setPersonExpenses}
+                  helpers={namedListHelpers}
+                />
+
+                <ChequesBlock idPrefix="g-cheque" rows={cheques} setRows={setCheques} helpers={chequeHelpers} />
+
+                <GroceryFixedExpensesBlock
+                  sections={fixedExpenseSections}
+                  setSections={setFixedExpenseSections}
+                  helpers={namedListHelpers}
+                />
+
                 <MidnightField
-                  id="rest-notes"
-                  label="Notes"
+                  id="grocery-notes"
+                  label="Day notes"
                   rows={5}
-                  value={restNotes}
-                  onChange={(event) => setRestNotes(event.target.value)}
+                  value={groceryNotes}
+                  onChange={(event) => setGroceryNotes(event.target.value)}
                   disabled={saving}
                 />
               </div>
+            ) : businessType === "restaurant" ? (
+              <RestaurantDailyEntryFields
+                idPrefix="rest-daily"
+                bank={restBank}
+                onBankChange={setRestBank}
+                cash={restCash}
+                onCashChange={setRestCash}
+                companySales={restCompanySales}
+                setCompanySales={setRestCompanySales}
+                companySaleHelpers={companySaleHelpers}
+                companySpesa={restCompanySpesa}
+                setCompanySpesa={setRestCompanySpesa}
+                spesaCompanyHelpers={spesaCompanyHelpers}
+                otherSpesa={restOtherSpesa}
+                setOtherSpesa={setRestOtherSpesa}
+                namedHelpers={namedListHelpers}
+                rent={restRent}
+                onRentChange={setRestRent}
+                personPurchases={restPersonPurchases}
+                setPersonPurchases={setRestPersonPurchases}
+                notes={restNotes}
+                onNotesChange={setRestNotes}
+                saving={saving}
+              />
             ) : (
               <div className="flex flex-col gap-8">
                 <section className="flex flex-col gap-3">

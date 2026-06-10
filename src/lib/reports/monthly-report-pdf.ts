@@ -3,6 +3,7 @@ import type { jsPDF } from "jspdf";
 import type { DailyFinancialBreakdown, ReportsBusinessType } from "@/lib/dashboard/reports-metrics";
 import type { MobileLedgerMatrixReport } from "@/lib/dashboard/mobile-transaction-ledger";
 import type { MobilePersonExpenseMatrixReport } from "@/lib/reports/mobile-person-expense-matrix";
+import type { RestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
 import { formatCurrency } from "@/lib/utils/formatters";
 import type { ProfitTrendDatum, SalesVsExpensesDatum } from "@/components/dashboard/reports-performance-charts";
 
@@ -47,6 +48,8 @@ export type MonthlyReportPdfInput = {
   useClientLastBalanceLabels?: boolean;
   /** Mobile shop: client-style executive summary (replaces four KPI boxes when set). */
   mobileExecutiveSummary?: MobileExecutiveSummary | null;
+  /** Restaurant: month grid (Bank/Cash/Glovo/…/Total Spesa). */
+  restaurantReportMatrix?: RestaurantReportMatrix | null;
 };
 
 const NAVY: [number, number, number] = [11, 18, 32];
@@ -307,7 +310,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     if (profitTrendPng) addChartImage(profitTrendPng);
   }
 
-  type MatrixReport = MobileLedgerMatrixReport | MobilePersonExpenseMatrixReport;
+  type MatrixReport = MobileLedgerMatrixReport | MobilePersonExpenseMatrixReport | RestaurantReportMatrix;
 
   const ledgerMatrix =
     mobileClient &&
@@ -315,6 +318,13 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     input.mobileLedgerMatrix.columns.length > 0 &&
     input.mobileLedgerMatrix.rows.length > 0
       ? input.mobileLedgerMatrix
+      : null;
+
+  const restaurantMatrix =
+    input.restaurantReportMatrix &&
+    input.restaurantReportMatrix.columns.length > 0 &&
+    input.restaurantReportMatrix.rows.length > 0
+      ? input.restaurantReportMatrix
       : null;
 
   const hasNamedPersonMatrix = Boolean(
@@ -325,7 +335,8 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
       input.mobilePersonMatrix.rows.length > 0,
   );
 
-  let matrixForPdf: MatrixReport | null = ledgerMatrix ?? (hasNamedPersonMatrix ? input.mobilePersonMatrix! : null);
+  let matrixForPdf: MatrixReport | null =
+    ledgerMatrix ?? restaurantMatrix ?? (hasNamedPersonMatrix ? input.mobilePersonMatrix! : null);
 
   /** Named lines missing in DB metadata but month has operating → still use sheet layout (one column). */
   if (
@@ -431,9 +442,11 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
           doc.text(
             matrixBlurbSingleOperatingCol
               ? "All amounts in EUR · Daily operating total (matches “Operating expenses” in the summary table). Use Daily Entry named cash/bank lines to split this into person columns."
-              : ledgerMatrix
-                ? "All amounts in EUR · Same columns as the Transactions tab (daily ledger: sales, buys, profits, packages, POS, expenses, balances)."
-                : "All amounts in EUR · Same buckets as Mobile Daily Entry: SIM, mobile & accessory sale/buy, R.Wind & R.Voda, repair, extra, POS, and total cash vs bank expenses per calendar day.",
+              : restaurantMatrix
+                ? "All amounts in EUR · Date, bank/cash sales, Glovo / Just Eat / Deliveroo, total sale, Kebab & C & C, other spesa (by name), rent, person expenses (by name), total spesa."
+                : ledgerMatrix
+                  ? "All amounts in EUR · Same columns as the Transactions tab (daily ledger: sales, buys, profits, packages, POS, expenses, balances)."
+                  : "All amounts in EUR · Same buckets as Mobile Daily Entry: SIM, mobile & accessory sale/buy, R.Wind & R.Voda, repair, extra, POS, and total cash vs bank expenses per calendar day.",
             margin,
             margin + 22,
             { maxWidth: pw - margin * 2 },
@@ -587,6 +600,4 @@ export async function downloadMonthlyReportPdf(input: MonthlyReportPdfInput): Pr
   URL.revokeObjectURL(url);
 }
 
-export function businessTypeLabel(bt: ReportsBusinessType): string {
-  return bt === "restaurant" ? "Restaurant" : "Mobile shop";
-}
+export { businessTypeLabel } from "@/lib/business-types";

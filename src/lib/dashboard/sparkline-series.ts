@@ -1,8 +1,6 @@
-import {
-  mobileProfitFromTransactions,
-  restaurantProfitFromTransactions,
-  type TransactionWithMeta,
-} from "@/lib/dashboard/daily-entry";
+import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
+import { mobileProfitFromTransactions } from "@/lib/dashboard/daily-entry";
+import { restaurantProfitFromTransactions } from "@/lib/dashboard/restaurant-daily-entry";
 import { addCalendarDaysISO, getTodayLocalISO } from "@/lib/utils/date-range";
 
 /** Last N calendar days ending today, oldest-first (for left-to-right sparklines). */
@@ -15,13 +13,7 @@ export function rollingDaysISOIncludingToday(days: number, todayISO = getTodayLo
   return dates;
 }
 
-export type RestaurantSparkMetrics = {
-  cash: number;
-  bank: number;
-  purchases: number;
-  expenses: number;
-  profit: number;
-};
+export type RestaurantSparkMetrics = ReturnType<typeof restaurantProfitFromTransactions>;
 
 export type MobileSparkMetrics = {
   phoneSales: number;

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { authCookieSerialization } from "@/lib/supabase/auth-session-options";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -31,9 +31,14 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Supabase unreachable — allow the request through; client-side auth will handle redirects.
+    return supabaseResponse;
+  }
 
   const path = request.nextUrl.pathname;
 
@@ -49,9 +54,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Run on all app routes except static assets — keeps auth cookies refreshed and avoids phantom logouts on full reload.
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

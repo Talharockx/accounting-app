@@ -6,8 +6,12 @@ import { GlassFormCard } from "@/components/ui/glass-form-card";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
 import { cn } from "@/lib/utils/cn";
+import {
+  businessTypeName,
+  type BusinessType,
+} from "@/lib/business-types";
 
-export type BusinessType = "restaurant" | "mobile_shop";
+export type { BusinessType };
 
 type AddBusinessSectionProps = {
   id?: string;
@@ -77,7 +81,7 @@ export function AddBusinessSection({
         <p className="mt-2 max-w-xl text-sm text-[var(--lv-muted-strong)]">{subtitle}</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <button type="button" className={typeCard("restaurant", selectedType === "restaurant")} onClick={() => onSelectType("restaurant")}>
           <p className="text-lg font-semibold text-[var(--lv-heading)] sm:text-xl">Restaurant</p>
           <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
@@ -97,13 +101,23 @@ export function AddBusinessSection({
             Margin-aware handset rows, carrier splits, and repair tickets render into the same LedgerView KPI grid.
           </p>
         </button>
+
+        <button type="button" className={typeCard("grocery", selectedType === "grocery")} onClick={() => onSelectType("grocery")}>
+          <p className="text-lg font-semibold text-[var(--lv-heading)] sm:text-xl">Grocery</p>
+          <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
+            Retail turnover, stock purchases, and daily cash discipline for food shops.
+          </p>
+          <p className="pointer-events-none mt-4 max-h-0 overflow-hidden text-xs leading-relaxed text-[var(--lv-muted-strong)] opacity-0 transition-[max-height,opacity] duration-300 ease-out group-hover/ptype:max-h-28 group-hover/ptype:opacity-100">
+            A dedicated lane for grocery accounting—entry fields will be tailored to your shop once you define them.
+          </p>
+        </button>
       </div>
 
       {selectedType ? (
         <GlassFormCard>
           <form onSubmit={onSubmit} className="flex flex-col gap-5">
             <p className="text-sm font-medium text-[var(--lv-heading)]">
-              Name your new {selectedType === "restaurant" ? "restaurant" : "mobile shop"}
+              Name your new {businessTypeName(selectedType)}
             </p>
             <MidnightField
               id={`${fid}-business-name`}

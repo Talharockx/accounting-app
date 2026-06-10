@@ -3,27 +3,43 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  SOURCE_RESTAURANT,
-  buildMobileDailyRows,
-  buildRestaurantDailyRows,
-  getMetadata,
   mergeSaleBuyNamedLines,
   merchFormStringsToSaleBuy,
-  metaString,
   parseMobileDailyFromTransactions,
   parseNonNegative,
-  summarizeRestaurantDay,
 } from "@/lib/dashboard/daily-entry";
+import { buildMobileDailyRows } from "@/lib/dashboard/daily-entry";
+import {
+  buildRestaurantDailyRows,
+  hydrateCompanySaleRows,
+  hydrateSpesaCompanyRows,
+  parseRestaurantDailyFromTransactions,
+  restaurantCompanySalesFromForm,
+  restaurantCompanySpesaFromForm,
+  restaurantDayHasContent,
+  restaurantNamedLinesFromForm,
+  summarizeRestaurantDay,
+} from "@/lib/dashboard/restaurant-daily-entry";
 import { buildMobileTransactionLedgerRow } from "@/lib/dashboard/mobile-transaction-ledger";
 import { MobileTransactionsLedgerTable } from "@/components/dashboard/mobile-transactions-ledger-table";
+import { GroceryTransactionsTable } from "@/components/dashboard/grocery-transactions-table";
+import { RestaurantTransactionsTable } from "@/components/dashboard/restaurant-transactions-table";
+import {
+  RestaurantDailyEntryFields,
+  useCompanySaleListHelpers,
+  useSpesaCompanyListHelpers,
+} from "@/components/dashboard/restaurant-shop-fields";
+import { summarizeGroceryDay } from "@/lib/dashboard/grocery-daily-entry";
 import {
   MerchNamedBlock,
   NamedLinesOnly,
+  emptyNamed,
   useMerchListHelpers,
   useNamedListHelpers,
   type MerchRowStr,
   type NamedRowStr,
 } from "@/components/dashboard/mobile-shop-fields";
+import type { CompanyDropdownRowStr, SpesaDropdownRowStr } from "@/lib/dashboard/restaurant-daily-entry";
 import {
   insertTransactionsWithMetadataFallback,
   selectWithMetadataColumnFallback,
@@ -43,21 +59,21 @@ import { supabase } from "@/lib/supabaseClient";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
-
-type BusinessType = "restaurant" | "mobile_shop";
+import { type BusinessType } from "@/lib/business-types";
 
 type TransactionRow = TransactionListRow;
-
-type RestaurantTotals = ReturnType<typeof summarizeRestaurantDay>;
 
 type RestaurantEdit = {
   kind: "restaurant";
   originalDate: string;
   date: string;
-  cash: string;
   bank: string;
-  purchases: string;
-  expenses: string;
+  cash: string;
+  companySales: CompanyDropdownRowStr[];
+  companySpesa: SpesaDropdownRowStr[];
+  otherSpesa: NamedRowStr[];
+  rent: string;
+  personPurchases: NamedRowStr[];
   notes: string;
 };
 
@@ -88,20 +104,6 @@ function calendarMonthHeading(year: number, monthIndex: number): string {
   });
 }
 
-function extractRestaurantNotes(rows: TransactionRow[]): string {
-  for (const row of rows) {
-    const meta = getMetadata(row.metadata, row.description);
-    if (
-      metaString(meta, "source") === SOURCE_RESTAURANT &&
-      metaString(meta, "line") === "daily_notes"
-    ) {
-      const noteValue = typeof meta["notes"] === "string" ? meta["notes"] : "";
-      if (!isBlankNote(noteValue)) return noteValue;
-    }
-  }
-  return "";
-}
-
 export default function TransactionsPage({
   params,
 }: {
@@ -124,6 +126,31 @@ export default function TransactionsPage({
 
   const namedListHelpers = useNamedListHelpers();
   const merchListHelpers = useMerchListHelpers();
+  const companySaleHelpers = useCompanySaleListHelpers();
+  const spesaCompanyHelpers = useSpesaCompanyListHelpers();
+
+  const restaurantEditHasContent = (r: RestaurantEdit) => {
+    const preview = buildRestaurantDailyRows({
+      business_id: businessId || "preview",
+      created_by_user_id: userId || "preview",
+      transaction_date: r.date,
+      bank_sales: parseNonNegative(r.bank),
+      cash_sales: parseNonNegative(r.cash),
+      company_sales: restaurantCompanySalesFromForm(r.companySales),
+      company_spesa: restaurantCompanySpesaFromForm(r.companySpesa),
+      other_spesa: restaurantNamedLinesFromForm(r.otherSpesa),
+      rent: parseNonNegative(r.rent),
+      person_purchases: restaurantNamedLinesFromForm(r.personPurchases),
+      notes: r.notes,
+    }).map((row) => ({
+      amount: row.amount,
+      transaction_type: row.transaction_type,
+      description: row.description,
+      transaction_date: row.transaction_date,
+      metadata: row.metadata,
+    }));
+    return restaurantDayHasContent(preview) || !isBlankNote(r.notes);
+  };
 
   const mobileEditHasAmount = (m: MobileEdit) => {
     const sumNamed = (list: NamedRowStr[]) => list.reduce((acc, row) => acc + parseNonNegative(row.amount), 0);
@@ -246,11 +273,6 @@ export default function TransactionsPage({
     return Array.from(set).sort((a, b) => (a > b ? -1 : 1));
   }, [rawRows]);
 
-  const summariesRestaurant = useMemo(
-    () => dates.map((date) => summarizeRestaurantDay(rawRows, date)),
-    [dates, rawRows],
-  );
-
   const filteredDates = useMemo(() => {
     if (!dateFilter) return dates;
     return dates.filter((d) => d === dateFilter);
@@ -261,19 +283,14 @@ export default function TransactionsPage({
     [filteredDates, rawRows],
   );
 
-  const restaurantTotalsSum = useMemo(
-    () =>
-      summariesRestaurant.reduce(
-        (acc, row) => ({
-          cash: acc.cash + row.cash,
-          bank: acc.bank + row.bank,
-          purchases: acc.purchases + row.purchases,
-          expenses: acc.expenses + row.expenses,
-          profit: acc.profit + row.profit,
-        }),
-        { cash: 0, bank: 0, purchases: 0, expenses: 0, profit: 0 },
-      ),
-    [summariesRestaurant],
+  const groceryLedgerRows = useMemo(
+    () => filteredDates.map((date) => ({ date, ...summarizeGroceryDay(rawRows, date) })),
+    [filteredDates, rawRows],
+  );
+
+  const restaurantLedgerRows = useMemo(
+    () => filteredDates.map((date) => summarizeRestaurantDay(rawRows, date)),
+    [filteredDates, rawRows],
   );
 
   const runDeleteDay = async (date: string) => {
@@ -306,6 +323,12 @@ export default function TransactionsPage({
     setSaving(true);
     setError("");
 
+    if (editing.kind === "restaurant" && !restaurantEditHasContent(editing)) {
+      toast.error("Add at least one amount or a note before saving.");
+      setSaving(false);
+      return;
+    }
+
     if (editing.kind === "mobile_shop" && !mobileEditHasAmount(editing)) {
       toast.error("Add at least one amount or a note before saving.");
       setSaving(false);
@@ -328,15 +351,19 @@ export default function TransactionsPage({
 
     try {
       if (editing.kind === "restaurant") {
+        const r = editing;
         const rows = buildRestaurantDailyRows({
           business_id: businessId,
           created_by_user_id: userId,
           transaction_date: targetDate,
-          cash_sales: parseNonNegative(editing.cash),
-          bank_sales: parseNonNegative(editing.bank),
-          purchases: parseNonNegative(editing.purchases),
-          expenses: parseNonNegative(editing.expenses),
-          notes: editing.notes,
+          bank_sales: parseNonNegative(r.bank),
+          cash_sales: parseNonNegative(r.cash),
+          company_sales: restaurantCompanySalesFromForm(r.companySales),
+          company_spesa: restaurantCompanySpesaFromForm(r.companySpesa),
+          other_spesa: restaurantNamedLinesFromForm(r.otherSpesa),
+          rent: parseNonNegative(r.rent),
+          person_purchases: restaurantNamedLinesFromForm(r.personPurchases),
+          notes: r.notes,
         });
 
         if (rows.length) {
@@ -395,17 +422,33 @@ export default function TransactionsPage({
     setSaving(false);
   };
 
-  const openEditRestaurant = (row: RestaurantTotals) => {
-    const dayRows = rawRows.filter((item) => item.transaction_date === row.date);
+  const openEditRestaurant = (date: string) => {
+    const dayMeta = rawRows
+      .filter((item) => item.transaction_date === date)
+      .map((r) => ({
+        amount: r.amount,
+        transaction_type: r.transaction_type,
+        description: r.description,
+        transaction_date: r.transaction_date,
+        metadata: r.metadata,
+      }));
+    const d = parseRestaurantDailyFromTransactions(dayMeta, date);
     setEditing({
       kind: "restaurant",
-      originalDate: row.date,
-      date: row.date,
-      cash: String(row.cash || 0),
-      bank: String(row.bank || 0),
-      purchases: String(row.purchases || 0),
-      expenses: String(row.expenses || 0),
-      notes: extractRestaurantNotes(dayRows),
+      originalDate: date,
+      date,
+      bank: String(d.bank_sales),
+      cash: String(d.cash_sales),
+      companySales: hydrateCompanySaleRows(d.company_sales),
+      companySpesa: hydrateSpesaCompanyRows(d.company_spesa),
+      otherSpesa: d.other_spesa.length
+        ? d.other_spesa.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
+        : [emptyNamed()],
+      rent: String(d.rent),
+      personPurchases: d.person_purchases.length
+        ? d.person_purchases.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
+        : [emptyNamed()],
+      notes: d.notes ?? "",
     });
   };
 
@@ -458,7 +501,9 @@ export default function TransactionsPage({
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--lv-muted-strong)]">
           {businessType === "mobile_shop"
             ? "Mobile shop ledger: one row per day with sale, buy, profit, POS, expenses, and balance columns. Filter by month, then optionally by date."
-            : "Day-by-day totals for the month you select below, compiled from saved Daily Entry."}
+            : businessType === "grocery"
+              ? "Grocery ledger: daily bank/cash sales, person sales, expenses, cheques, and net profit."
+              : "Restaurant ledger: daily sales, company spesa, rent, person purchases, and profit / loss."}
         </p>
         <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="flex flex-col gap-1.5">
@@ -477,7 +522,7 @@ export default function TransactionsPage({
               className="lv-input max-w-[12rem] rounded-xl"
             />
           </div>
-          {businessType === "mobile_shop" ? (
+          {businessType === "mobile_shop" || businessType === "grocery" || businessType === "restaurant" ? (
             <div className="flex flex-col gap-1.5">
               <label htmlFor="transactions-date" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
                 Date (optional)
@@ -528,103 +573,25 @@ export default function TransactionsPage({
           <strong className="font-semibold text-[var(--lv-heading)]">Daily Entry</strong> to add records for this month.
         </p>
       ) : businessType === "restaurant" ? (
+        dateFilter && restaurantLedgerRows.length === 0 ? (
+          <p className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
+            No daily entry for <span className="font-semibold text-[var(--lv-heading)]">{dateFilter}</span> in{" "}
+            {monthHeading}. Clear the date filter or pick another day.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] backdrop-blur-3xl shadow-[var(--lv-bento-shadow)]">
+            <RestaurantTransactionsTable
+              rows={restaurantLedgerRows}
+              deletingDate={deletingDate}
+              onEdit={(row) => openEditRestaurant(row.date)}
+              onDelete={setPendingDeleteDate}
+              footerLabel={dateFilter ? `Total (${dateFilter})` : `Total (${monthHeading})`}
+            />
+          </div>
+        )
+      ) : businessType === "grocery" ? (
         <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] backdrop-blur-3xl shadow-[var(--lv-bento-shadow)]">
-          <table className="lv-tabular-mono w-full min-w-[860px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 text-right font-medium">Cash</th>
-                <th className="px-4 py-3 text-right font-medium">Bank</th>
-                <th className="px-4 py-3 text-right font-medium">Purchases</th>
-                <th className="px-4 py-3 text-right font-medium">Expenses</th>
-                <th className="px-4 py-3 text-right font-medium">Profit</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summariesRestaurant.map((row) => (
-                <tr
-                  key={row.date}
-                  className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_35%,transparent)] text-[var(--lv-heading)] last:border-0 hover:bg-[color-mix(in_srgb,var(--lv-accent)_05%,transparent)]"
-                >
-                  <td className="whitespace-nowrap px-4 py-3 text-[var(--lv-muted-strong)]">{row.date}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    {formatCurrency(row.cash)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    {formatCurrency(row.bank)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.purchases)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-[var(--lv-muted-strong)]">
-                    {formatCurrency(row.expenses)}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold tracking-tight ${
-                      row.profit > 0
-                        ? "text-[var(--lv-traffic-positive)]"
-                        : row.profit < 0
-                          ? "text-[var(--lv-traffic-critical)]"
-                          : "text-[var(--lv-traffic-neutral)]"
-                    }`}
-                  >
-                    {formatCurrency(row.profit)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        aria-label="Edit day"
-                        title="Edit day"
-                        onClick={() => openEditRestaurant(row)}
-                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-muted-strong)] transition hover:bg-[#ffffff07] hover:text-[var(--lv-heading)] active:scale-[0.97]"
-                      >
-                        <IconPencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Delete day"
-                        title="Delete day"
-                        disabled={deletingDate === row.date}
-                        onClick={() => setPendingDeleteDate(row.date)}
-                        className="inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl border border-[#ffffff10] p-2 text-[var(--lv-traffic-critical)] transition hover:bg-[color-mix(in_srgb,var(--lv-traffic-critical)_12%,transparent)] hover:text-[var(--lv-traffic-critical)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-                      >
-                        <IconTrash className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_75%,transparent)] text-[var(--lv-heading)]">
-                <th scope="row" className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-[var(--lv-accent)]">
-                  Total
-                </th>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold">{formatCurrency(restaurantTotalsSum.cash)}</td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold">{formatCurrency(restaurantTotalsSum.bank)}</td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(restaurantTotalsSum.purchases)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-[var(--lv-muted-strong)]">
-                  {formatCurrency(restaurantTotalsSum.expenses)}
-                </td>
-                <td
-                  className={`whitespace-nowrap px-4 py-3.5 text-right text-base font-bold tracking-tight ${
-                    restaurantTotalsSum.profit > 0
-                      ? "text-[var(--lv-traffic-positive)]"
-                      : restaurantTotalsSum.profit < 0
-                        ? "text-[var(--lv-traffic-critical)]"
-                        : "text-[var(--lv-traffic-neutral)]"
-                  }`}
-                >
-                  {formatCurrency(restaurantTotalsSum.profit)}
-                </td>
-                <td className="px-4 py-3.5" aria-hidden />
-              </tr>
-            </tfoot>
-          </table>
+          <GroceryTransactionsTable rows={groceryLedgerRows} />
         </div>
       ) : dateFilter && mobileLedgerRows.length === 0 ? (
         <p className="rounded-[1rem] border border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-4 py-6 text-sm text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
@@ -650,13 +617,16 @@ export default function TransactionsPage({
           onClick={() => setEditing(null)}
         >
           <div
-            className="w-full max-w-md cursor-default rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl backdrop-blur-md"
+            className="max-h-[90vh] w-full max-w-2xl cursor-default overflow-y-auto rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl backdrop-blur-md"
             onClick={(event) => event.stopPropagation()}
           >
             <h2 id="edit-day-title" className="text-lg font-semibold text-[var(--lv-heading)]">
               Edit daily entry ({editing.originalDate})
             </h2>
-            <form className="mt-4 flex flex-col gap-4" onSubmit={handleSaveDayEdit}>
+            <p className="mt-2 text-xs text-[var(--lv-muted-strong)]">
+              Same structure as Daily Entry. Saving replaces all rows for this business and date.
+            </p>
+            <form className="mt-4 flex flex-col gap-6" onSubmit={handleSaveDayEdit}>
               <Field
                 label="Entry date"
                 id="edit-r-date"
@@ -664,49 +634,52 @@ export default function TransactionsPage({
                 value={editing.date}
                 onChange={(value) => setEditing({ ...editing, date: value })}
               />
-              <Field
-                label="Cash sales"
-                id="edit-r-cash"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.cash}
-                onChange={(value) => setEditing({ ...editing, cash: value })}
-              />
-              <Field
-                label="Bank sales"
-                id="edit-r-bank"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.bank}
-                onChange={(value) => setEditing({ ...editing, bank: value })}
-              />
-              <Field
-                label="Purchases"
-                id="edit-r-purchases"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.purchases}
-                onChange={(value) => setEditing({ ...editing, purchases: value })}
-              />
-              <Field
-                label="Expenses"
-                id="edit-r-expenses"
-                type="number"
-                min={0}
-                step={0.01}
-                value={editing.expenses}
-                onChange={(value) => setEditing({ ...editing, expenses: value })}
-              />
-              <MidnightField
-                id="edit-r-notes"
-                label="Notes"
-                rows={4}
-                value={editing.notes}
-                onChange={(event) => setEditing({ ...editing, notes: event.target.value })}
-                disabled={saving}
+              <RestaurantDailyEntryFields
+                idPrefix="tx-rest"
+                bank={editing.bank}
+                onBankChange={(value) => setEditing((p) => (p?.kind === "restaurant" ? { ...p, bank: value } : p))}
+                cash={editing.cash}
+                onCashChange={(value) => setEditing((p) => (p?.kind === "restaurant" ? { ...p, cash: value } : p))}
+                companySales={editing.companySales}
+                setCompanySales={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "restaurant") return p;
+                    const next = typeof action === "function" ? action(p.companySales) : action;
+                    return { ...p, companySales: next };
+                  })
+                }
+                companySaleHelpers={companySaleHelpers}
+                companySpesa={editing.companySpesa}
+                setCompanySpesa={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "restaurant") return p;
+                    const next = typeof action === "function" ? action(p.companySpesa) : action;
+                    return { ...p, companySpesa: next };
+                  })
+                }
+                spesaCompanyHelpers={spesaCompanyHelpers}
+                otherSpesa={editing.otherSpesa}
+                setOtherSpesa={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "restaurant") return p;
+                    const next = typeof action === "function" ? action(p.otherSpesa) : action;
+                    return { ...p, otherSpesa: next };
+                  })
+                }
+                namedHelpers={namedListHelpers}
+                rent={editing.rent}
+                onRentChange={(value) => setEditing((p) => (p?.kind === "restaurant" ? { ...p, rent: value } : p))}
+                personPurchases={editing.personPurchases}
+                setPersonPurchases={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "restaurant") return p;
+                    const next = typeof action === "function" ? action(p.personPurchases) : action;
+                    return { ...p, personPurchases: next };
+                  })
+                }
+                notes={editing.notes}
+                onNotesChange={(value) => setEditing((p) => (p?.kind === "restaurant" ? { ...p, notes: value } : p))}
+                saving={saving}
               />
               <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <PressableButton type="button" variant="secondary" className="min-h-12 w-full sm:w-auto" onClick={() => setEditing(null)}>

@@ -182,49 +182,13 @@ export function isSupplierRicarcheExpenseLabel(itemName: string): boolean {
   return false;
 }
 
-/** Restaurant daily profit for a set of transactions (same filters as UI). */
-export function restaurantProfitFromTransactions(rows: TransactionWithMeta[]): {
-  cash: number;
-  bank: number;
-  purchases: number;
-  expenses: number;
-  profit: number;
-} {
-  let cash = 0;
-  let bank = 0;
-  let purchases = 0;
-  let expenses = 0;
-  for (const row of rows) {
-    const m = getMetadata(row.metadata, row.description);
-    const amt = Number(row.amount) || 0;
-    if (metaString(m, "source") === SOURCE_RESTAURANT) {
-      const line = metaString(m, "line") as RestaurantMetaLine | undefined;
-      if (line === "cash_sales" && row.transaction_type === "sale") cash += amt;
-      else if (line === "bank_sales" && row.transaction_type === "sale") bank += amt;
-      else if (line === "purchases" && row.transaction_type === "expense") purchases += amt;
-      else if (line === "expenses" && row.transaction_type === "expense") expenses += amt;
-      continue;
-    }
-
-    const d = normDesc(stripEmbeddedMetaFromDescription(row.description));
-    if (row.transaction_type === "sale" && d === normDesc(DESC_REST_CASH)) cash += amt;
-    else if (row.transaction_type === "sale" && d === normDesc(DESC_REST_BANK)) bank += amt;
-    else if (row.transaction_type === "expense" && d === normDesc(DESC_REST_PURCHASES))
-      purchases += amt;
-    else if (row.transaction_type === "expense" && d === normDesc(DESC_REST_EXPENSES))
-      expenses += amt;
-    else if (row.transaction_type === "sale" && d === "daily sales") cash += amt;
-    else if (row.transaction_type === "expense" && d === "purchases") purchases += amt;
-    else if (row.transaction_type === "expense" && d === "expenses") expenses += amt;
-  }
-  return {
-    cash,
-    bank,
-    purchases,
-    expenses,
-    profit: cash + bank - purchases - expenses,
-  };
-}
+export {
+  buildRestaurantDailyRows,
+  restaurantProfitFromTransactions,
+  summarizeRestaurantDay,
+  type RestaurantDailyInput,
+  type RestaurantDayTotals,
+} from "@/lib/dashboard/restaurant-daily-entry";
 
 /** Mobile daily P&L from structured daily-entry rows (SOURCE_MOBILE) + legacy description rows. */
 export function mobileProfitFromTransactions(rows: TransactionWithMeta[]): {
@@ -412,104 +376,12 @@ export function mobileProfitFromTransactions(rows: TransactionWithMeta[]): {
   };
 }
 
-export function summarizeRestaurantDay(rows: TransactionWithMeta[], date: string) {
-  const dayRows = rows.filter((r) => r.transaction_date === date);
-  return {
-    date,
-    ...restaurantProfitFromTransactions(dayRows),
-  };
-}
-
 export function summarizeMobileDay(rows: TransactionWithMeta[], date: string) {
   const dayRows = rows.filter((r) => r.transaction_date === date);
   return {
     date,
     ...mobileProfitFromTransactions(dayRows),
   };
-}
-
-export type RestaurantDailyInput = {
-  business_id: string;
-  created_by_user_id: string;
-  transaction_date: string;
-  cash_sales: number;
-  bank_sales: number;
-  purchases: number;
-  expenses: number;
-  notes: string;
-};
-
-export function buildRestaurantDailyRows(input: RestaurantDailyInput): TransactionInsert[] {
-  const rows: TransactionInsert[] = [];
-
-  const baseContext = SOURCE_RESTAURANT;
-
-  if (input.cash_sales > 0) {
-    rows.push({
-      business_id: input.business_id,
-      transaction_type: "sale",
-      amount: input.cash_sales,
-      description: DESC_REST_CASH,
-      transaction_date: input.transaction_date,
-      created_by_user_id: input.created_by_user_id,
-      metadata: { source: baseContext, line: "cash_sales" satisfies RestaurantMetaLine },
-    });
-  }
-
-  if (input.bank_sales > 0) {
-    rows.push({
-      business_id: input.business_id,
-      transaction_type: "sale",
-      amount: input.bank_sales,
-      description: DESC_REST_BANK,
-      transaction_date: input.transaction_date,
-      created_by_user_id: input.created_by_user_id,
-      metadata: { source: baseContext, line: "bank_sales" satisfies RestaurantMetaLine },
-    });
-  }
-
-  if (input.purchases > 0) {
-    rows.push({
-      business_id: input.business_id,
-      transaction_type: "expense",
-      amount: input.purchases,
-      description: DESC_REST_PURCHASES,
-      transaction_date: input.transaction_date,
-      created_by_user_id: input.created_by_user_id,
-      metadata: { source: baseContext, line: "purchases" satisfies RestaurantMetaLine },
-    });
-  }
-
-  if (input.expenses > 0) {
-    rows.push({
-      business_id: input.business_id,
-      transaction_type: "expense",
-      amount: input.expenses,
-      description: DESC_REST_EXPENSES,
-      transaction_date: input.transaction_date,
-      created_by_user_id: input.created_by_user_id,
-      metadata: { source: baseContext, line: "expenses" satisfies RestaurantMetaLine },
-    });
-  }
-
-  const trimmedNotes = input.notes.trim();
-  if (!isBlankNote(input.notes)) {
-    rows.push({
-      business_id: input.business_id,
-      transaction_type: "expense",
-      amount: 0,
-      description: DESC_REST_NOTES,
-      transaction_date: input.transaction_date,
-      created_by_user_id: input.created_by_user_id,
-      metadata: {
-        source: baseContext,
-        line: "daily_notes" satisfies RestaurantMetaLine,
-        notes: trimmedNotes,
-      },
-    });
-  }
-
-  return rows;
 }
 
 /** Named line with a non‑negative euro amount (phones, accessories, repairs, extras). */
