@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ReportsPerformanceCharts } from "@/components/dashboard/reports-performance-charts";
 import { BentoCell } from "@/components/ui/bento-cell";
-import { mobileProfitFromTransactions, type TransactionWithMeta } from "@/lib/dashboard/daily-entry";
+import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import {
   buildDailySeries,
   monthlyTotalsForRange,
@@ -32,10 +32,11 @@ import {
 } from "@/lib/utils/date-range";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
-import { formatCurrencyWhole } from "@/lib/utils/formatters";
+import { formatCurrency } from "@/lib/utils/formatters";
 import { supabase } from "@/lib/supabaseClient";
 import { PressableButton } from "@/components/ui/pressable";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MobileLedgerReportsTable } from "@/components/dashboard/mobile-ledger-reports-table";
 import { RestaurantReportsTable } from "@/components/dashboard/restaurant-reports-table";
 import { buildRestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
 import { cn } from "@/lib/utils/cn";
@@ -236,6 +237,11 @@ export default function ReportsPage({
     return buildRestaurantReportMatrix(inMonth, monthRange.start, monthRange.end);
   }, [businessType, monthRange, transactions]);
 
+  const mobileLedgerMatrix = useMemo(() => {
+    if (businessType !== "mobile_shop" || !monthRange) return null;
+    return buildMobileTransactionLedgerMatrix(transactions, monthRange.start, monthRange.end);
+  }, [businessType, monthRange, transactions]);
+
   const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
 
   const handleDownloadPdf = async () => {
@@ -250,23 +256,26 @@ export default function ReportsPage({
       const inMonthTransactions = transactions.filter(
         (t) => t.transaction_date >= monthRange.start && t.transaction_date <= monthRange.end,
       );
-      const mobileLedgerMatrix =
-        businessType === "mobile_shop"
+      const mobileLedgerMatrixPdf =
+        businessType === "mobile_shop" && monthRange
           ? buildMobileTransactionLedgerMatrix(transactions, monthRange.start, monthRange.end)
           : null;
       const mobileExecutiveSummary =
-        businessType === "mobile_shop" && mobileLedgerMatrix
+        businessType === "mobile_shop" && mobileLedgerMatrixPdf
           ? (() => {
-              const m = mobileProfitFromTransactions(inMonthTransactions);
+              const totalSale = ledgerMatrixColumnTotal(mobileLedgerMatrixPdf, "Total sale");
+              const totalRicarche =
+                ledgerMatrixColumnTotal(mobileLedgerMatrixPdf, "R.Wind") +
+                ledgerMatrixColumnTotal(mobileLedgerMatrixPdf, "R.Voda");
+              const totalExpense =
+                ledgerMatrixColumnTotal(mobileLedgerMatrixPdf, "Cash expense") +
+                ledgerMatrixColumnTotal(mobileLedgerMatrixPdf, "Bank expense");
+              const totalProfit = ledgerMatrixColumnTotal(mobileLedgerMatrixPdf, "Total profit");
               return {
-                totalSale: m.totalSaleSheet,
-                totalCost: m.purchases,
-                totalRicarche: m.supplierRicarche,
-                totalExpenseCash: m.cashExpenses,
-                lastBalanceWithoutBank: m.lastBalance,
-                simProfit: ledgerMatrixColumnTotal(mobileLedgerMatrix, "Sim profit"),
-                mobileProfit: ledgerMatrixColumnTotal(mobileLedgerMatrix, "Mobile profit"),
-                accesProfit: ledgerMatrixColumnTotal(mobileLedgerMatrix, "Access. profit"),
+                totalSale,
+                totalRicarche,
+                totalExpense,
+                totalProfit,
               };
             })()
           : null;
@@ -285,7 +294,7 @@ export default function ReportsPage({
         profitTrendChart: profitTrendData,
         useClientLastBalanceLabels: businessType === "mobile_shop",
         mobileExecutiveSummary,
-        mobileLedgerMatrix,
+        mobileLedgerMatrix: mobileLedgerMatrixPdf,
         restaurantReportMatrix: restaurantReportMatrixPdf,
       });
       setPdfMessage("PDF report downloaded.");
@@ -360,24 +369,24 @@ export default function ReportsPage({
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <BentoCell className="p-6 sm:col-span-1">
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
-            Monthly sales
+            {businessType === "mobile_shop" ? "Total sale" : "Monthly sales"}
           </p>
           <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
-            {txLoading || txError ? "—" : formatCurrencyWhole(monthlyTotals.sales)}
+            {txLoading || txError ? "—" : formatCurrency(monthlyTotals.sales)}
           </p>
         </BentoCell>
         <BentoCell className="p-6">
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
-            Operating expenses
+            {businessType === "mobile_shop" ? "Total expense (Cash + Bank)" : "Operating expenses"}
           </p>
           <p className="lv-tabular-mono mt-4 text-3xl font-semibold tracking-tight text-[var(--lv-heading)] sm:text-[2.1rem]">
-            {txLoading || txError ? "—" : formatCurrencyWhole(monthlyTotals.operatingExpenses)}
+            {txLoading || txError ? "—" : formatCurrency(monthlyTotals.operatingExpenses)}
           </p>
         </BentoCell>
         <BentoCell featured className="p-6">
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-accent)]">
             {businessType === "mobile_shop"
-              ? "Last balance"
+              ? "Total profit"
               : businessType === "restaurant"
                 ? "Total profit / loss"
                 : "Net profit"}
@@ -390,7 +399,7 @@ export default function ReportsPage({
               monthlyTotals.profit === 0 && "text-[var(--lv-traffic-neutral)]",
             )}
           >
-            {txLoading || txError ? "—" : formatCurrencyWhole(monthlyTotals.profit)}
+            {txLoading || txError ? "—" : formatCurrency(monthlyTotals.profit)}
           </p>
         </BentoCell>
       </section>
@@ -461,14 +470,14 @@ export default function ReportsPage({
             salesVsExpenses={salesVsExpensesData}
             profitTrend={profitTrendData}
             profitTrendTitle={
-              businessType === "mobile_shop" ? "Last balance trend · selected month" : undefined
+              businessType === "mobile_shop" ? "Total profit trend · selected month" : undefined
             }
             profitTrendCaption={
               businessType === "mobile_shop"
-                ? "Per day: total sale − total cost − total recharges (R.Wind + R.Voda) − cash expenses only — same as Overview last balance. Bank expenses are excluded from last balance."
+                ? "Per day: total sale − (cash expense + bank expense) — same as the ledger Total profit column."
                 : undefined
             }
-            profitTooltipLabel={businessType === "mobile_shop" ? "Last balance" : undefined}
+            profitTooltipLabel={businessType === "mobile_shop" ? "Total profit" : undefined}
           />
         )}
       </section>
@@ -489,6 +498,26 @@ export default function ReportsPage({
             <Skeleton className="h-48 w-full rounded-[1.625rem]" />
           ) : (
             <RestaurantReportsTable matrix={restaurantReportMatrix ?? { columns: [], rows: [], columnTotals: [] }} />
+          )}
+        </section>
+      ) : null}
+
+      {businessType === "mobile_shop" ? (
+        <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
+          <h2 className="mb-2 text-lg font-bold tracking-tight text-[var(--lv-heading)]">Monthly entries</h2>
+          <p className="mb-6 max-w-3xl text-sm text-[var(--lv-muted-strong)]">
+            Same columns as the PDF export and Transactions tab.{" "}
+            <strong className="text-[var(--lv-heading)]">Total profit</strong> = Total sale − (Cash expense + Bank
+            expense). Scroll right to see the last column.
+          </p>
+          {txError ? (
+            <p className="text-sm font-medium text-[var(--lv-traffic-critical)]" role="alert">
+              {txError}
+            </p>
+          ) : txLoading ? (
+            <Skeleton className="h-48 w-full rounded-[1.625rem]" />
+          ) : (
+            <MobileLedgerReportsTable matrix={mobileLedgerMatrix ?? { columns: [], rows: [], columnTotals: [] }} />
           )}
         </section>
       ) : null}

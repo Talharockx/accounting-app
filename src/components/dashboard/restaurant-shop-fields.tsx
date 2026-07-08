@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
 import { cn } from "@/lib/utils/cn";
-import { parseNonNegative } from "@/lib/dashboard/daily-entry";
+import { sanitizeNonNegativeDecimalInput } from "@/lib/dashboard/daily-entry";
 import {
   RESTAURANT_DELIVERY_PLATFORMS,
   RESTAURANT_SPESA_COMPANIES,
@@ -39,9 +39,12 @@ export function useCompanySaleListHelpers() {
       ) => setter((prev) => prev.map((row, i) => (i === index ? { ...row, companyKey } : row))),
       changeAmount: (setter: Dispatch<SetStateAction<CompanyDropdownRowStr[]>>, index: number, amount: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, amount: String(Math.max(0, parseNonNegative(amount))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(amount);
+            if (next === null) return row;
+            return { ...row, amount: next };
+          }),
         ),
     }),
     [],
@@ -64,9 +67,12 @@ export function useSpesaCompanyListHelpers() {
       ) => setter((prev) => prev.map((row, i) => (i === index ? { ...row, companyKey } : row))),
       changeAmount: (setter: Dispatch<SetStateAction<SpesaDropdownRowStr[]>>, index: number, amount: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, amount: String(Math.max(0, parseNonNegative(amount))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(amount);
+            if (next === null) return row;
+            return { ...row, amount: next };
+          }),
         ),
     }),
     [],
@@ -286,7 +292,10 @@ export function RestaurantRentPersonTabs({
           step="0.01"
           inputMode="decimal"
           value={rent}
-          onChange={(e) => onRentChange(String(Math.max(0, parseNonNegative(e.target.value))))}
+          onChange={(e) => {
+            const next = sanitizeNonNegativeDecimalInput(e.target.value);
+            if (next !== null) onRentChange(next);
+          }}
         />
       ) : (
         <NamedLinesOnly
@@ -361,7 +370,10 @@ export function RestaurantDailyEntryFields({
             step="0.01"
             inputMode="decimal"
             value={bank}
-            onChange={(e) => onBankChange(String(Math.max(0, parseNonNegative(e.target.value))))}
+            onChange={(e) => {
+              const next = sanitizeNonNegativeDecimalInput(e.target.value);
+              if (next !== null) onBankChange(next);
+            }}
           />
           <MidnightField
             id={`${idPrefix}-cash`}
@@ -371,7 +383,10 @@ export function RestaurantDailyEntryFields({
             step="0.01"
             inputMode="decimal"
             value={cash}
-            onChange={(e) => onCashChange(String(Math.max(0, parseNonNegative(e.target.value))))}
+            onChange={(e) => {
+              const next = sanitizeNonNegativeDecimalInput(e.target.value);
+              if (next !== null) onCashChange(next);
+            }}
           />
         </div>
       </section>

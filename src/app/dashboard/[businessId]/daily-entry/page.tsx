@@ -10,6 +10,7 @@ import {
   metaString,
   parseMobileDailyFromTransactions,
   parseNonNegative,
+  sanitizeNonNegativeDecimalInput,
 } from "@/lib/dashboard/daily-entry";
 import {
   buildRestaurantDailyRows,
@@ -353,7 +354,8 @@ export default function DailyEntryPage({
   }, [businessId, entryDate, businessType, loadDay, loading]);
 
   const clampInput = (value: string, setter: (next: string) => void) => {
-    setter(String(Math.max(0, parseNonNegative(value))));
+    const next = sanitizeNonNegativeDecimalInput(value);
+    if (next !== null) setter(next);
   };
 
   const namedListHelpers = useNamedListHelpers();
@@ -703,16 +705,6 @@ export default function DailyEntryPage({
                   <h3 className="text-lg font-semibold text-[var(--lv-heading)]">SIM</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <MidnightField
-                      id="sim-buy"
-                      label="SIM buy (shop cost)"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      value={simBuy}
-                      onChange={(e) => clampInput(e.target.value, setSimBuy)}
-                    />
-                    <MidnightField
                       id="sim-sale"
                       label="SIM sale (retail)"
                       type="number"
@@ -721,6 +713,16 @@ export default function DailyEntryPage({
                       inputMode="decimal"
                       value={simSale}
                       onChange={(e) => clampInput(e.target.value, setSimSale)}
+                    />
+                    <MidnightField
+                      id="sim-buy"
+                      label="SIM buy (shop cost)"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={simBuy}
+                      onChange={(e) => clampInput(e.target.value, setSimBuy)}
                     />
                   </div>
                 </section>

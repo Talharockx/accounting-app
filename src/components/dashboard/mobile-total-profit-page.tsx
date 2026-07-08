@@ -4,19 +4,19 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PressableButton } from "@/components/ui/pressable";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import {
-  DESC_MOBILE_NOTES,
-  DESC_REST_NOTES,
-  type TransactionWithMeta,
-} from "@/lib/dashboard/daily-entry";
+  buildMobileTotalProfitRows,
+  sumMobileTotalProfitRows,
+  type MobileTotalProfitRow,
+} from "@/lib/dashboard/mobile-transaction-ledger";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
-import { collectDailyEntryNotesForRange } from "@/lib/reports/period-notes";
-import { downloadDetailExportPdf } from "@/lib/reports/detail-export-pdf";
+import { downloadTotalProfitPdf } from "@/lib/reports/total-profit-pdf";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
-import { Skeleton } from "@/components/ui/skeleton";
-import { noteToPlainText } from "@/lib/utils/rich-text";
+import { formatCurrency } from "@/lib/utils/formatters";
 import {
   getMonthBoundariesISO,
   parseMonthInputValue,
@@ -24,7 +24,7 @@ import {
 } from "@/lib/utils/date-range";
 import { cn } from "@/lib/utils/cn";
 
-function formatNoteHeadingDate(iso: string): string {
+function formatDate(iso: string): string {
   const [y, mo, d] = iso.split("-");
   if (!y || !mo || !d) return iso;
   return `${d.padStart(2, "0")}/${mo.padStart(2, "0")}/${y}`;
@@ -37,9 +37,20 @@ function calendarMonthHeading(year: number, monthIndex: number): string {
   });
 }
 
-export default function NotesPage({ params }: { params: Promise<{ businessId: string }> }) {
+function profitClass(value: number): string {
+  if (value > 0) return "text-[var(--lv-traffic-positive)]";
+  if (value < 0) return "text-[var(--lv-traffic-critical)]";
+  return "text-[var(--lv-heading)]";
+}
+
+export function MobileTotalProfitPage({
+  params,
+}: {
+  params: Promise<{ businessId: string }>;
+}) {
   const [businessId, setBusinessId] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [businessType, setBusinessType] = useState<string | null>(null);
   const [bizLoading, setBizLoading] = useState(true);
   const [txLoading, setTxLoading] = useState(false);
   const [txError, setTxError] = useState("");
@@ -58,10 +69,11 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
       try {
         const { data, error } = await supabase
           .from("businesses")
-          .select("name")
+          .select("name, business_type")
           .eq("id", bid)
           .single();
         if (!cancelled && data?.name) setBusinessName(data.name as string);
+        if (!cancelled && data?.business_type) setBusinessType(data.business_type as string);
         if (error && !cancelled) {
           setTxError(getUserFriendlyError(new Error(error.message)));
         }
@@ -74,7 +86,7 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [params]);
 
   const parsedMonth = useMemo(() => parseMonthInputValue(monthInput), [monthInput]);
 
@@ -88,8 +100,6 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
 
     setTxLoading(true);
     setTxError("");
-    /** Daily notes are a handful of rows per month; never pull the full ledger here (was 20k). */
-    const notesDescriptionOr = `description.like.${DESC_REST_NOTES}%,description.like.${DESC_MOBILE_NOTES}%`;
     try {
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>
@@ -99,9 +109,8 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
             .eq("business_id", businessId)
             .gte("transaction_date", monthRange.start)
             .lte("transaction_date", monthRange.end)
-            .or(notesDescriptionOr)
             .order("transaction_date", { ascending: true })
-            .limit(124),
+            .limit(5000),
         async () =>
           await supabase
             .from("transactions")
@@ -109,22 +118,19 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
             .eq("business_id", businessId)
             .gte("transaction_date", monthRange.start)
             .lte("transaction_date", monthRange.end)
-            .or(notesDescriptionOr)
             .order("transaction_date", { ascending: true })
-            .limit(124),
+            .limit(5000),
       );
 
       if (fetchError) {
-        const msg = getUserFriendlyError(new Error(fetchError.message));
-        setTxError(msg);
+        setTxError(getUserFriendlyError(new Error(fetchError.message)));
         setTransactions([]);
         return;
       }
 
       setTransactions(mapTransactionRows(data ?? []));
     } catch (caught) {
-      const msg = getUserFriendlyError(caught, SYSTEM_UNAVAILABLE);
-      setTxError(msg);
+      setTxError(getUserFriendlyError(caught, SYSTEM_UNAVAILABLE));
       setTransactions([]);
     } finally {
       setTxLoading(false);
@@ -132,18 +138,19 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
   }, [businessId, monthRange]);
 
   useEffect(() => {
-    if (!businessId || !monthRange) return;
+    if (!businessId || !monthRange || businessType !== "mobile_shop") return;
     const id = window.setTimeout(() => void loadTransactions(), 0);
     return () => window.clearTimeout(id);
-  }, [businessId, monthRange, loadTransactions]);
+  }, [businessId, monthRange, businessType, loadTransactions]);
 
-  const monthDailyNotes = useMemo(() => {
+  const profitRows = useMemo((): MobileTotalProfitRow[] => {
     if (!monthRange) return [];
-    return collectDailyEntryNotesForRange(transactions, monthRange.start, monthRange.end);
+    return buildMobileTotalProfitRows(transactions, monthRange.start, monthRange.end);
   }, [monthRange, transactions]);
 
-  const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
+  const grandTotal = useMemo(() => sumMobileTotalProfitRows(profitRows), [profitRows]);
 
+  const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
   const periodTitle = parsedMonth
     ? calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)
     : "";
@@ -152,13 +159,13 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
     if (!businessName || !periodTitle) return;
     setPdfBusy(true);
     try {
-      await downloadDetailExportPdf({
+      await downloadTotalProfitPdf({
         businessName,
         periodTitle,
-        kind: "notes",
-        notes: monthDailyNotes,
+        rows: profitRows,
+        grandTotal,
       });
-      toast.success("Notes PDF downloaded.");
+      toast.success("Total profit PDF downloaded.");
     } catch (caught) {
       toast.error(getUserFriendlyError(caught));
     } finally {
@@ -175,9 +182,18 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
     );
   }
 
-  if (!parsedMonth || !monthRange) {
-    return null;
+  if (businessType !== "mobile_shop") {
+    return (
+      <div className="glass-panel rounded-[1.625rem] p-8 text-center">
+        <p className="text-lg font-semibold text-[var(--lv-heading)]">Total profit</p>
+        <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
+          This section is available for mobile shop workspaces only.
+        </p>
+      </div>
+    );
   }
+
+  if (!parsedMonth || !monthRange) return null;
 
   return (
     <div className="space-y-6">
@@ -185,22 +201,25 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div>
             <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
-              Notes
+              Total profit
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
-              Daily entry notes
+              Total profit
             </h1>
+            <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
+              Total profit = Total sale − (Cash expense + Bank expense)
+            </p>
             {businessName ? (
-              <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">{businessName}</p>
+              <p className="mt-1 text-sm text-[var(--lv-muted-strong)]">{businessName}</p>
             ) : null}
           </div>
           <div className="flex flex-col gap-3 sm:items-end">
             <div className="flex flex-col gap-2 sm:items-end">
-              <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor="notes-month">
+              <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor="total-profit-month">
                 Month
               </label>
               <input
-                id="notes-month"
+                id="total-profit-month"
                 type="month"
                 max={maxMonthInput}
                 value={monthInput}
@@ -218,23 +237,24 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
                 "bg-gradient-to-r from-cyan-400/95 to-[color-mix(in_srgb,var(--lv-accent)_72%,#0e7490)]",
               )}
             >
-              {pdfBusy ? "Generating PDF…" : "Export notes (PDF)"}
+              {pdfBusy ? "Generating PDF…" : "Download total profit (PDF)"}
             </PressableButton>
           </div>
         </div>
       </section>
 
-      {!txError && txLoading ? (
-        <p className="text-sm text-slate-400">Loading notes…</p>
-      ) : null}
-
       <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
         <p className="mb-4 text-sm text-[var(--lv-muted-strong)]">
-          Notes saved from Daily Entry for{" "}
-          <span className="font-medium text-[var(--lv-heading)]">
-            {calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)}
-          </span>
-          . Add or edit them under Daily Entry for each date.
+          {periodTitle}
+          {profitRows.length > 0 ? (
+            <>
+              {" "}
+              · Month total profit{" "}
+              <span className={cn("font-semibold", profitClass(grandTotal.totalProfit))}>
+                {formatCurrency(grandTotal.totalProfit)}
+              </span>
+            </>
+          ) : null}
         </p>
 
         {txError ? (
@@ -243,33 +263,61 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
           </p>
         ) : txLoading ? (
           <Skeleton className="h-32 w-full rounded-xl" />
-        ) : monthDailyNotes.length === 0 ? (
+        ) : profitRows.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="rounded-xl border border-dashed border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-6 py-14 text-center dark:bg-white/[0.04]"
           >
-            <p className="text-base font-semibold text-[var(--lv-heading)]">No notes this month</p>
+            <p className="text-base font-semibold text-[var(--lv-heading)]">No entries this month</p>
             <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-              Open Daily Entry, pick a date, and use the day notes field at the bottom of the form.
+              Save daily entry data to see total profit per day.
             </p>
           </motion.div>
         ) : (
-          <ul className="flex flex-col gap-4">
-            {monthDailyNotes.map((n) => (
-              <li
-                key={n.date}
-                className="rounded-xl border border-white/10 bg-[var(--lv-surface-muted)] p-4 dark:bg-white/[0.04]"
-              >
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--lv-accent)]">
-                  {formatNoteHeadingDate(n.date)}
-                </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--lv-heading)]">
-                  {noteToPlainText(n.html)}
-                </p>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto rounded-xl border border-white/10">
+            <table className="lv-tabular-mono w-full min-w-[44rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-white/10 bg-[var(--lv-surface-muted)] text-xs font-semibold uppercase tracking-wide text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3 text-right">Total sale</th>
+                  <th className="px-4 py-3 text-right">Cash expense</th>
+                  <th className="px-4 py-3 text-right">Bank expense</th>
+                  <th className="px-4 py-3 text-right">Total expense</th>
+                  <th className="px-4 py-3 text-right">Total profit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profitRows.map((row) => (
+                  <tr
+                    key={row.date}
+                    className="border-b border-white/5 text-[var(--lv-heading)]"
+                  >
+                    <td className="px-4 py-3 text-[var(--lv-accent)]">{formatDate(row.date)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(row.totalSale)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(row.cashExpense)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(row.bankExpense)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(row.totalExpense)}</td>
+                    <td className={cn("px-4 py-3 text-right font-semibold", profitClass(row.totalProfit))}>
+                      {formatCurrency(row.totalProfit)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-[var(--lv-surface-muted)] font-semibold dark:bg-white/[0.04]">
+                  <td className="px-4 py-3 text-[var(--lv-accent)]">Grand Total</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(grandTotal.totalSale)}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(grandTotal.cashExpense)}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(grandTotal.bankExpense)}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(grandTotal.totalExpense)}</td>
+                  <td className={cn("px-4 py-3 text-right", profitClass(grandTotal.totalProfit))}>
+                    {formatCurrency(grandTotal.totalProfit)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         )}
       </section>
     </div>

@@ -147,8 +147,8 @@ export function mobileLedgerSummaryFromTransactions(rows: TransactionWithMeta[])
   return ledgerRowFromComponents("summary", aggregateMobileLedgerComponents(rows));
 }
 
-/** Column headers for PDF export — matches Transactions tab. */
-export const MOBILE_LEDGER_REPORT_COLUMNS = [
+/** Client-facing ledger columns (monthly report PDF + Transactions tab). */
+export const MOBILE_LEDGER_CLIENT_COLUMNS = [
   "Sim sale",
   "Sim buy",
   "Sim profit",
@@ -167,11 +167,99 @@ export const MOBILE_LEDGER_REPORT_COLUMNS = [
   "Total cash sale",
   "Cash expense",
   "Bank expense",
-  "Rem. cash sale",
-  "Rem. bank sale",
-  "Last balance",
-  "Profit (sale−buy)",
+  "Total profit",
 ] as const;
+
+/** Two-line PDF headers — avoids jspdf-autotable chopping labels mid-word. */
+export const MOBILE_LEDGER_PDF_HEAD_LABELS: Record<(typeof MOBILE_LEDGER_CLIENT_COLUMNS)[number], string> = {
+  "Sim sale": "Sim\nSale",
+  "Sim buy": "Sim\nBuy",
+  "Sim profit": "Sim\nProfit",
+  "Mobile sale": "Mobile\nSale",
+  "Mobile buy": "Mobile\nBuy",
+  "Mobile profit": "Mobile\nProfit",
+  "Access. sale": "Acc.\nSale",
+  "Access. buy": "Acc.\nBuy",
+  "Access. profit": "Acc.\nProfit",
+  "R.Wind": "R.\nWind",
+  "R.Voda": "R.\nVoda",
+  Repair: "Repair",
+  Extras: "Extras",
+  "Total sale": "Total\nSale",
+  POS: "POS",
+  "Total cash sale": "Cash\nSale",
+  "Cash expense": "Cash\nExp.",
+  "Bank expense": "Bank\nExp.",
+  "Total profit": "Total\nProfit",
+};
+
+export function mobileLedgerPdfHeadLabel(column: string): string {
+  const key = column as (typeof MOBILE_LEDGER_CLIENT_COLUMNS)[number];
+  return MOBILE_LEDGER_PDF_HEAD_LABELS[key] ?? column;
+}
+
+/** @deprecated Use {@link MOBILE_LEDGER_CLIENT_COLUMNS}. */
+export const MOBILE_LEDGER_REPORT_COLUMNS = MOBILE_LEDGER_CLIENT_COLUMNS;
+
+export type MobileTotalProfitRow = {
+  date: string;
+  totalSale: number;
+  cashExpense: number;
+  bankExpense: number;
+  totalExpense: number;
+  totalProfit: number;
+};
+
+/** Total profit = total sale − (cash expense + bank expense). */
+export function computeTotalProfit(totalSale: number, cashExpense: number, bankExpense: number): number {
+  return totalSale - (cashExpense + bankExpense);
+}
+
+export function ledgerRowToTotalProfit(row: MobileTransactionLedgerRow): MobileTotalProfitRow {
+  const totalExpense = row.cashExpense + row.bankExpense;
+  return {
+    date: row.date,
+    totalSale: row.totalSale,
+    cashExpense: row.cashExpense,
+    bankExpense: row.bankExpense,
+    totalExpense,
+    totalProfit: computeTotalProfit(row.totalSale, row.cashExpense, row.bankExpense),
+  };
+}
+
+export function buildMobileTotalProfitRows(
+  rows: TransactionWithMeta[],
+  monthStartISO: string,
+  monthEndISO: string,
+): MobileTotalProfitRow[] {
+  const inMonth = rows.filter(
+    (r) => r.transaction_date >= monthStartISO && r.transaction_date <= monthEndISO,
+  );
+  const dates = Array.from(new Set(inMonth.map((r) => r.transaction_date))).sort((a, b) =>
+    b.localeCompare(a),
+  );
+  return dates.map((dateISO) =>
+    ledgerRowToTotalProfit(buildMobileTransactionLedgerRow(inMonth, dateISO)),
+  );
+}
+
+export function sumMobileTotalProfitRows(rows: MobileTotalProfitRow[]): MobileTotalProfitRow {
+  const sum = rows.reduce(
+    (acc, row) => ({
+      totalSale: acc.totalSale + row.totalSale,
+      cashExpense: acc.cashExpense + row.cashExpense,
+      bankExpense: acc.bankExpense + row.bankExpense,
+    }),
+    { totalSale: 0, cashExpense: 0, bankExpense: 0 },
+  );
+  const totalExpense = sum.cashExpense + sum.bankExpense;
+  return {
+    date: "total",
+    ...sum,
+    totalExpense,
+    totalProfit: computeTotalProfit(sum.totalSale, sum.cashExpense, sum.bankExpense),
+  };
+}
 
 export type MobileLedgerMatrixReport = {
   columns: string[];
@@ -205,6 +293,7 @@ function ledgerRowToColumnAmounts(row: MobileTransactionLedgerRow): Record<strin
     "Total cash sale": row.totalCashSale,
     "Cash expense": row.cashExpense,
     "Bank expense": row.bankExpense,
+    "Total profit": computeTotalProfit(row.totalSale, row.cashExpense, row.bankExpense),
     "Rem. cash sale": row.remainingCashSale,
     "Rem. bank sale": row.remainingBankSale,
     "Last balance": row.lastBalance,
@@ -224,7 +313,7 @@ export function buildMobileTransactionLedgerMatrix(
   const dates = Array.from(new Set(inMonth.map((r) => r.transaction_date))).sort((a, b) =>
     b.localeCompare(a),
   );
-  const columns = [...MOBILE_LEDGER_REPORT_COLUMNS];
+  const columns = [...MOBILE_LEDGER_CLIENT_COLUMNS];
   const ledgerRows = dates.map((dateISO) => buildMobileTransactionLedgerRow(inMonth, dateISO));
   const matrixRows = ledgerRows.map((row) => ({
     dateISO: row.date,

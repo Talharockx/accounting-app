@@ -1,25 +1,23 @@
 import type { jsPDF } from "jspdf";
 
 import type { DailyFinancialBreakdown, ReportsBusinessType } from "@/lib/dashboard/reports-metrics";
-import type { MobileLedgerMatrixReport } from "@/lib/dashboard/mobile-transaction-ledger";
+import {
+  mobileLedgerPdfHeadLabel,
+  type MobileLedgerMatrixReport,
+} from "@/lib/dashboard/mobile-transaction-ledger";
 import type { MobilePersonExpenseMatrixReport } from "@/lib/reports/mobile-person-expense-matrix";
 import type { RestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
 import { formatCurrency } from "@/lib/utils/formatters";
 import type { ProfitTrendDatum, SalesVsExpensesDatum } from "@/components/dashboard/reports-performance-charts";
 
-/** Month-level mobile sheet KPIs (one {@link mobileProfitFromTransactions} pass on the month’s rows). */
+/** Month-level mobile sheet KPIs for the PDF executive summary. */
 export type MobileExecutiveSummary = {
   totalSale: number;
-  totalCost: number;
   totalRicarche: number;
-  totalExpenseCash: number;
-  lastBalanceWithoutBank: number;
-  /** Month total: Sim Sale − Sim Buying. */
-  simProfit: number;
-  /** Month total: Mobile Sale − Mobile Buying. */
-  mobileProfit: number;
-  /** Month total: Accessories sale − Accessories buying. */
-  accesProfit: number;
+  /** Cash expense + bank expense for the month. */
+  totalExpense: number;
+  /** Total sale − total expense (cash + bank). */
+  totalProfit: number;
 };
 
 export type MonthlyReportPdfInput = {
@@ -66,6 +64,45 @@ function money(n: number): string {
   return formatCurrency(n);
 }
 
+/** Tighter currency for wide ledger grids (fits narrow PDF columns). */
+function moneyCompact(n: number): string {
+  const amount = new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: false,
+  }).format(n);
+  return `${amount} €`;
+}
+
+function isMobileLedgerMatrix(matrix: { columns: string[] }): boolean {
+  return matrix.columns.length > 0 && matrix.columns[0] === "Sim sale";
+}
+
+function mobileLedgerMatrixColumnStyles(
+  pageWidth: number,
+  margin: number,
+  columns: string[],
+): Record<number, { cellWidth: number; halign: "left" | "right"; overflow: "visible" | "hidden" }> {
+  const tableW = pageWidth - margin * 2;
+  const dateW = 50;
+  const weights = columns.map((c) =>
+    c === "Total cash sale" || c === "Total profit" || c === "Cash expense" || c === "Bank expense" ? 1.18 : 1,
+  );
+  const weightSum = weights.reduce((acc, w) => acc + w, 0);
+  const amountPool = tableW - dateW;
+  const styles: Record<number, { cellWidth: number; halign: "left" | "right"; overflow: "visible" | "hidden" }> = {
+    0: { cellWidth: dateW, halign: "left", overflow: "visible" },
+  };
+  columns.forEach((_, i) => {
+    styles[i + 1] = {
+      cellWidth: (amountPool * weights[i]) / weightSum,
+      halign: "right",
+      overflow: "hidden",
+    };
+  });
+  return styles;
+}
+
 function isoToDisplayDDMMYYYY(iso: string): string {
   const [y, m, d] = iso.split("-");
   if (!y || !m || !d) return iso;
@@ -84,6 +121,7 @@ function isMobileSheetProfitColumn(col: string): boolean {
     col === "Sim profit" ||
     col === "Mobile profit" ||
     col === "Access. profit" ||
+    col === "Total profit" ||
     col === "Last balance" ||
     col === "Profit (sale−buy)"
   );
@@ -158,59 +196,39 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
 
   if (mobileClient && mobileExec) {
     const blockTop = y;
-    const rowH = 32;
     const padX = 18;
-    const leftSectionW = contentW * 0.55;
-    const valueXLeft = margin + leftSectionW - padX;
-    const rows: { label: string; value: string; valueRgb: [number, number, number] }[] = [
+    const valueRightX = margin + contentW - padX;
+    const labelMaxW = contentW - padX * 2 - 110;
+    const mainRows: { label: string; value: string; valueRgb: [number, number, number] }[] = [
       { label: "Total sale", value: money(mobileExec.totalSale), valueRgb: EMERALD_SOFT },
-      { label: "Total cost", value: money(mobileExec.totalCost), valueRgb: TEXT },
       { label: "Total ricariche (R.Wind + R.Voda)", value: money(mobileExec.totalRicarche), valueRgb: TEXT },
-      { label: "Total expense (cash)", value: money(mobileExec.totalExpenseCash), valueRgb: ROSE },
+      { label: "Total expense (Cash + Bank)", value: money(mobileExec.totalExpense), valueRgb: ROSE },
       {
-        label: "Last balance (excl. bank expenses)",
-        value: money(mobileExec.lastBalanceWithoutBank),
-        valueRgb: mobileExec.lastBalanceWithoutBank >= 0 ? EMERALD_SOFT : ROSE,
+        label: "Total profit",
+        value: money(mobileExec.totalProfit),
+        valueRgb: mobileExec.totalProfit >= 0 ? EMERALD_SOFT : ROSE,
       },
     ];
-    const blockH = 16 + rows.length * rowH + 14;
+    const rowH = 32;
+    const blockH = 16 + mainRows.length * rowH + 14;
 
     doc.setFillColor(...NAVY_PANEL);
     doc.setDrawColor(40, 52, 72);
     doc.setLineWidth(0.45);
     doc.roundedRect(margin, blockTop, contentW, blockH, 8, 8, "FD");
 
-    let ry = blockTop + 22;
-    for (let i = 0; i < rows.length; i += 1) {
-      const row = rows[i]!;
+    let ry = blockTop + 26;
+    for (let i = 0; i < mainRows.length; i += 1) {
+      const row = mainRows[i]!;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10.5);
       doc.setTextColor(...MUTED);
-      doc.text(row.label, margin + padX, ry);
+      doc.text(row.label, margin + padX, ry, { maxWidth: labelMaxW });
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
       doc.setTextColor(...row.valueRgb);
-      doc.text(row.value, valueXLeft, ry, { align: "right" });
+      doc.text(row.value, valueRightX, ry, { align: "right" });
       ry += rowH;
-    }
-
-    const profitTitles = ["Sim Profit", "Mobile Profit", "Acces. Profit"] as const;
-    const profitVals = [mobileExec.simProfit, mobileExec.mobileProfit, mobileExec.accesProfit];
-    const profitBandX0 = margin + leftSectionW + 14;
-    const profitBandW = margin + contentW - padX - profitBandX0;
-    const pcw = profitBandW / 3;
-    let px = profitBandX0;
-    for (let j = 0; j < 3; j += 1) {
-      const pv = profitVals[j] ?? 0;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(...MUTED);
-      doc.text(profitTitles[j]!, px + pcw / 2, blockTop + 22, { align: "center" });
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(...(pv >= 0 ? EMERALD_SOFT : ROSE));
-      doc.text(money(pv), px + pcw / 2, blockTop + 44, { align: "center" });
-      px += pcw;
     }
 
     y = blockTop + blockH + 16;
@@ -365,37 +383,47 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     matrixForPdf?.columns.length === 1 && matrixForPdf.columns[0] === "Operating expenses";
 
   if (usePersonMatrix && matrixForPdf) {
+    const mobileLedgerPdf = isMobileLedgerMatrix(matrixForPdf);
+    const matrixMargin = mobileLedgerPdf ? 24 : margin;
     doc.addPage("a4", "l");
     const lw = doc.internal.pageSize.getWidth();
     paintPageBackground(doc, lw, doc.internal.pageSize.getHeight());
     const firstMatrixPage = doc.getNumberOfPages();
-    const tableStartY = margin + 26;
+    const tableStartY = matrixMargin + (mobileLedgerPdf ? 30 : 26);
     const colCount = matrixForPdf.columns.length;
-    const tableFont = Math.max(6, Math.min(9, 11 - Math.floor(colCount / 3)));
+    const tableFont = mobileLedgerPdf ? 7 : Math.max(6, Math.min(9, 11 - Math.floor(colCount / 3)));
+    const formatAmount = mobileLedgerPdf ? moneyCompact : money;
 
-    const headRow = ["Date", ...matrixForPdf.columns];
+    const headRow = [
+      "Date",
+      ...matrixForPdf.columns.map((c) => (mobileLedgerPdf ? mobileLedgerPdfHeadLabel(c) : c)),
+    ];
     const bodyRows = matrixForPdf.rows.map((r) => [
       r.displayDate,
       ...matrixForPdf.columns.map((c) => {
         const v = r.amounts[c] ?? 0;
-        if (isMobileSheetProfitColumn(c)) return money(v);
-        return v > 0 ? money(v) : "";
+        if (isMobileSheetProfitColumn(c)) return formatAmount(v);
+        return v !== 0 ? formatAmount(v) : "";
       }),
     ]);
     const footRow = [
       "Grand Total",
-      ...matrixForPdf.columnTotals.map((t) => money(t)),
+      ...matrixForPdf.columnTotals.map((t) => formatAmount(t)),
     ];
 
-    const colStyles: Record<number, { halign: "left" | "right" }> = {
-      0: { halign: "left" },
-    };
-    for (let i = 1; i <= colCount; i += 1) {
-      colStyles[i] = { halign: "right" };
-    }
+    const colStyles = mobileLedgerPdf
+      ? mobileLedgerMatrixColumnStyles(lw, matrixMargin, matrixForPdf.columns)
+      : (() => {
+          const base: Record<number, { halign: "left" | "right" }> = { 0: { halign: "left" } };
+          for (let i = 1; i <= colCount; i += 1) {
+            base[i] = { halign: "right" };
+          }
+          return base;
+        })();
 
     autoTable(doc, {
       startY: tableStartY,
+      tableWidth: lw - matrixMargin * 2,
       head: [headRow],
       body: bodyRows,
       foot: [footRow],
@@ -403,20 +431,25 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
       theme: "plain",
       styles: {
         fontSize: tableFont,
-        cellPadding: { top: 5, right: 6, bottom: 5, left: 6 },
+        cellPadding: mobileLedgerPdf
+          ? { top: 4, right: 4, bottom: 4, left: 4 }
+          : { top: 5, right: 6, bottom: 5, left: 6 },
         lineColor: [30, 41, 59],
         lineWidth: 0,
         valign: "middle",
         fillColor: NAVY_PANEL,
         textColor: TEXT,
-        overflow: "linebreak",
+        overflow: mobileLedgerPdf ? "hidden" : "linebreak",
       },
       headStyles: {
         fontStyle: "bold",
         fillColor: EMERALD,
         textColor: [11, 18, 32],
-        fontSize: tableFont,
+        fontSize: mobileLedgerPdf ? 6.5 : tableFont,
         lineWidth: 0,
+        minCellHeight: mobileLedgerPdf ? 28 : 14,
+        valign: "middle",
+        overflow: "visible",
       },
       alternateRowStyles: { fillColor: NAVY_STRIPE, lineWidth: 0 },
       columnStyles: colStyles,
@@ -424,10 +457,10 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
         fontStyle: "bold",
         fillColor: EMERALD_DEEP,
         textColor: [209, 250, 229],
-        fontSize: tableFont + 0.5,
+        fontSize: tableFont,
         lineWidth: 0,
       },
-      margin: { left: margin, right: margin, top: margin, bottom: margin },
+      margin: { left: matrixMargin, right: matrixMargin, top: matrixMargin, bottom: matrixMargin },
       willDrawPage: (data) => {
         const pw = doc.internal.pageSize.getWidth();
         paintPageBackground(doc, pw, doc.internal.pageSize.getHeight());
@@ -435,7 +468,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
           doc.setFont("helvetica", "bold");
           doc.setFontSize(11);
           doc.setTextColor(...EMERALD_SOFT);
-          doc.text("Monthly entries", margin, margin + 10);
+          doc.text("Monthly entries", matrixMargin, matrixMargin + 10);
           doc.setFont("helvetica", "normal");
           doc.setFontSize(8.5);
           doc.setTextColor(...MUTED);
@@ -444,18 +477,26 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
               ? "All amounts in EUR · Daily operating total (matches “Operating expenses” in the summary table). Use Daily Entry named cash/bank lines to split this into person columns."
               : restaurantMatrix
                 ? "All amounts in EUR · Date, bank/cash sales, Glovo / Just Eat / Deliveroo, total sale, Kebab & C & C, other spesa (by name), rent, person expenses (by name), total spesa."
-                : ledgerMatrix
-                  ? "All amounts in EUR · Same columns as the Transactions tab (daily ledger: sales, buys, profits, packages, POS, expenses, balances)."
+                : mobileLedgerPdf
+                  ? "All amounts in EUR · Daily ledger through Total profit (Total sale − Cash expense − Bank expense)."
                   : "All amounts in EUR · Same buckets as Mobile Daily Entry: SIM, mobile & accessory sale/buy, R.Wind & R.Voda, repair, extra, POS, and total cash vs bank expenses per calendar day.",
-            margin,
-            margin + 22,
-            { maxWidth: pw - margin * 2 },
+            matrixMargin,
+            matrixMargin + 22,
+            { maxWidth: pw - matrixMargin * 2 },
           );
         }
       },
       didParseCell: (data) => {
         if (data.section === "head") {
           data.cell.styles.halign = data.column.index === 0 ? "left" : "right";
+          if (mobileLedgerPdf) {
+            data.cell.styles.valign = "middle";
+            data.cell.styles.overflow = "visible";
+          }
+        }
+        if (mobileLedgerPdf && data.section === "body" && data.column.index === 0) {
+          data.cell.styles.overflow = "visible";
+          data.cell.styles.halign = "left";
         }
         if (data.section === "body" && data.column.index > 0) {
           const colName = matrixForPdf.columns[data.column.index - 1];

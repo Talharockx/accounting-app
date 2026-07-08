@@ -5,16 +5,20 @@ import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 
-import { WORKSPACE_NAV } from "./workspace-nav";
+import type { BusinessType } from "@/lib/business-types";
+
+import { workspaceNavForBusiness } from "./workspace-nav";
 
 type DashboardSidebarProps = {
   businessId: string;
   businessName: string;
+  businessType: BusinessType;
 };
 
 /** Tablet/desktop sidebar (≥768px); smaller viewports use `DashboardBottomNav` */
-export function DashboardSidebar({ businessId, businessName }: DashboardSidebarProps) {
+export function DashboardSidebar({ businessId, businessName, businessType }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const navItems = workspaceNavForBusiness(businessType);
 
   const linkClass = (active: boolean) =>
     cn(
@@ -40,7 +44,7 @@ export function DashboardSidebar({ businessId, businessName }: DashboardSidebarP
       </div>
 
       <nav className="flex flex-col gap-1.5">
-        {WORKSPACE_NAV.map((item, i) => {
+        {navItems.map((item, i) => {
           const href = item.slug ? `/dashboard/${businessId}/${item.slug}` : `/dashboard/${businessId}`;
           const active = pathname === href;
 

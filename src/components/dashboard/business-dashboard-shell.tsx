@@ -182,7 +182,11 @@ export function BusinessDashboardShell({ children }: { children: React.ReactNode
         </header>
 
         <div className="grid gap-6 md:grid-cols-[280px_1fr]">
-          <DashboardSidebar businessId={businessId} businessName={business.name} />
+          <DashboardSidebar
+            businessId={businessId}
+            businessName={business.name}
+            businessType={business.business_type}
+          />
 
           <motion.div
             key={pathname}
@@ -196,7 +200,7 @@ export function BusinessDashboardShell({ children }: { children: React.ReactNode
         </div>
       </section>
 
-      <DashboardBottomNav businessId={businessId} />
+      <DashboardBottomNav businessId={businessId} businessType={business.business_type} />
 
       <ConfirmDialog
         open={signOutOpen}

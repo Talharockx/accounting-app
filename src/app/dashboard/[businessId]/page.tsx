@@ -54,7 +54,6 @@ export default function BusinessOverviewPage({
   const [draftEnd, setDraftEnd] = useState(() => defaultMonthToDateRange().end);
   const [txLoading, setTxLoading] = useState(true);
   const [txError, setTxError] = useState("");
-  const [mobileBalanceView, setMobileBalanceView] = useState<"sheet" | "incl_bank" | "ledger">("sheet");
 
   const loadTransactions = useCallback(
     async (id: string, p: PeriodFilter, range: { start: string; end: string }, singleDay: string) => {
@@ -219,23 +218,7 @@ export default function BusinessOverviewPage({
   const restaurantTotals = restaurantProfitFromTransactions(transactions);
   const mobileTotals = mobileProfitFromTransactions(transactions);
   const mobileSummary = mobileLedgerSummaryFromTransactions(transactions);
-  const mobileLastBalanceWithBankExpense =
-    mobileTotals.totalSaleSheet -
-    mobileTotals.purchases -
-    mobileTotals.supplierRicarche -
-    mobileTotals.bankExpenses;
-  const mobileDisplayedBalance =
-    mobileBalanceView === "sheet"
-      ? mobileTotals.lastBalance
-      : mobileBalanceView === "incl_bank"
-        ? mobileTotals.lastBalanceWithBank
-        : mobileLastBalanceWithBankExpense;
-  const mobileBalanceHint =
-    mobileBalanceView === "sheet"
-      ? "Client sheet: total sale − purchases − recharges − cash expenses"
-      : mobileBalanceView === "incl_bank"
-        ? "Sheet balance minus bank/card operating expenses"
-        : "Total sale − total cost − total recharges − bank expenses";
+  const mobileTotalProfit = mobileSummary.lastBalance;
 
   return (
     <section className="space-y-6">
@@ -428,46 +411,25 @@ export default function BusinessOverviewPage({
             <BentoCell featured className="col-span-2 row-span-2 min-h-[260px] p-7 sm:p-8">
               <div className="flex h-full flex-col justify-between gap-6">
                 <div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className={mobileBalanceView === "sheet" ? pillActive : pillIdle}
-                      onClick={() => setMobileBalanceView("sheet")}
-                    >
-                      Sheet (cash exp.)
-                    </button>
-                    <button
-                      type="button"
-                      className={mobileBalanceView === "incl_bank" ? pillActive : pillIdle}
-                      onClick={() => setMobileBalanceView("incl_bank")}
-                    >
-                      Cash + bank
-                    </button>
-                    <button
-                      type="button"
-                      className={mobileBalanceView === "ledger" ? pillActive : pillIdle}
-                      onClick={() => setMobileBalanceView("ledger")}
-                    >
-                      With bank expense
-                    </button>
-                  </div>
-                  <p className="mt-4 text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
-                    Last balance
+                  <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--lv-muted-strong)]">
+                    Total profit
                   </p>
-                  <p className="mt-1 text-xs text-[var(--lv-muted-strong)]">{mobileBalanceHint}</p>
+                  <p className="mt-1 text-xs text-[var(--lv-muted-strong)]">
+                    Total sale − (Cash expense + Bank expense)
+                  </p>
                   <p
                     className={cn(
                       "lv-tabular-mono mt-3 text-4xl font-semibold tracking-tighter sm:text-[2.85rem]",
-                      toneProfitNumeric(mobileDisplayedBalance) === "positive" && "text-[var(--lv-traffic-positive)]",
-                      toneProfitNumeric(mobileDisplayedBalance) === "neutral" && "text-[var(--lv-traffic-neutral)]",
-                      toneProfitNumeric(mobileDisplayedBalance) === "critical" && "text-[var(--lv-traffic-critical)]",
+                      toneProfitNumeric(mobileTotalProfit) === "positive" && "text-[var(--lv-traffic-positive)]",
+                      toneProfitNumeric(mobileTotalProfit) === "neutral" && "text-[var(--lv-traffic-neutral)]",
+                      toneProfitNumeric(mobileTotalProfit) === "critical" && "text-[var(--lv-traffic-critical)]",
                     )}
                   >
-                    {formatCurrency(mobileDisplayedBalance)}
+                    {formatCurrency(mobileTotalProfit)}
                   </p>
                 </div>
                 <div className="flex items-end">
-                  <NetProfitArrow profit={mobileDisplayedBalance} />
+                  <NetProfitArrow profit={mobileTotalProfit} />
                 </div>
               </div>
             </BentoCell>

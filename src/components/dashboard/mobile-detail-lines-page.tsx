@@ -4,25 +4,68 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PressableButton } from "@/components/ui/pressable";
-import {
-  DESC_MOBILE_NOTES,
-  DESC_REST_NOTES,
-  type TransactionWithMeta,
-} from "@/lib/dashboard/daily-entry";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
-import { collectDailyEntryNotesForRange } from "@/lib/reports/period-notes";
-import { downloadDetailExportPdf } from "@/lib/reports/detail-export-pdf";
+import {
+  collectMobileBankExpensesForRange,
+  collectMobileCashExpensesForRange,
+  collectMobileExtrasForRange,
+  formatDetailLineAmount,
+  sumDetailLineAmounts,
+  type MobileDetailLineRow,
+} from "@/lib/reports/collect-mobile-detail-lines";
+import { downloadDetailExportPdf, type DetailExportKind } from "@/lib/reports/detail-export-pdf";
 import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
-import { Skeleton } from "@/components/ui/skeleton";
-import { noteToPlainText } from "@/lib/utils/rich-text";
 import {
   getMonthBoundariesISO,
   parseMonthInputValue,
   toMonthInputValue,
 } from "@/lib/utils/date-range";
 import { cn } from "@/lib/utils/cn";
+
+type PageConfig = {
+  kind: Extract<DetailExportKind, "extras" | "cash_expenses" | "bank_expenses">;
+  title: string;
+  subtitle: string;
+  emptyTitle: string;
+  emptyHint: string;
+  nameHeader: string;
+  collect: (
+    rows: TransactionWithMeta[],
+    start: string,
+    end: string,
+  ) => MobileDetailLineRow[];
+};
+
+const PAGE_CONFIG: Record<PageConfig["kind"], Omit<PageConfig, "kind">> = {
+  extras: {
+    title: "Extras",
+    subtitle: "Other income lines saved from Daily Entry.",
+    emptyTitle: "No extras this month",
+    emptyHint: "Add named extra lines under Daily Entry for each date.",
+    nameHeader: "Item",
+    collect: collectMobileExtrasForRange,
+  },
+  cash_expenses: {
+    title: "Cash expenses",
+    subtitle: "Cash payments saved from Daily Entry.",
+    emptyTitle: "No cash expenses this month",
+    emptyHint: "Add cash expense lines under Daily Entry for each date.",
+    nameHeader: "Detail",
+    collect: collectMobileCashExpensesForRange,
+  },
+  bank_expenses: {
+    title: "Bank expenses",
+    subtitle: "Bank / card payments saved from Daily Entry.",
+    emptyTitle: "No bank expenses this month",
+    emptyHint: "Add bank expense lines under Daily Entry for each date.",
+    nameHeader: "Detail",
+    collect: collectMobileBankExpensesForRange,
+  },
+};
 
 function formatNoteHeadingDate(iso: string): string {
   const [y, mo, d] = iso.split("-");
@@ -37,9 +80,16 @@ function calendarMonthHeading(year: number, monthIndex: number): string {
   });
 }
 
-export default function NotesPage({ params }: { params: Promise<{ businessId: string }> }) {
+type Props = {
+  params: Promise<{ businessId: string }>;
+  kind: PageConfig["kind"];
+};
+
+export function MobileDetailLinesPage({ params, kind }: Props) {
+  const config = PAGE_CONFIG[kind];
   const [businessId, setBusinessId] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [businessType, setBusinessType] = useState<string | null>(null);
   const [bizLoading, setBizLoading] = useState(true);
   const [txLoading, setTxLoading] = useState(false);
   const [txError, setTxError] = useState("");
@@ -58,10 +108,11 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
       try {
         const { data, error } = await supabase
           .from("businesses")
-          .select("name")
+          .select("name, business_type")
           .eq("id", bid)
           .single();
         if (!cancelled && data?.name) setBusinessName(data.name as string);
+        if (!cancelled && data?.business_type) setBusinessType(data.business_type as string);
         if (error && !cancelled) {
           setTxError(getUserFriendlyError(new Error(error.message)));
         }
@@ -74,7 +125,7 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [params]);
 
   const parsedMonth = useMemo(() => parseMonthInputValue(monthInput), [monthInput]);
 
@@ -88,8 +139,6 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
 
     setTxLoading(true);
     setTxError("");
-    /** Daily notes are a handful of rows per month; never pull the full ledger here (was 20k). */
-    const notesDescriptionOr = `description.like.${DESC_REST_NOTES}%,description.like.${DESC_MOBILE_NOTES}%`;
     try {
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>
@@ -99,9 +148,8 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
             .eq("business_id", businessId)
             .gte("transaction_date", monthRange.start)
             .lte("transaction_date", monthRange.end)
-            .or(notesDescriptionOr)
             .order("transaction_date", { ascending: true })
-            .limit(124),
+            .limit(5000),
         async () =>
           await supabase
             .from("transactions")
@@ -109,9 +157,8 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
             .eq("business_id", businessId)
             .gte("transaction_date", monthRange.start)
             .lte("transaction_date", monthRange.end)
-            .or(notesDescriptionOr)
             .order("transaction_date", { ascending: true })
-            .limit(124),
+            .limit(5000),
       );
 
       if (fetchError) {
@@ -132,15 +179,17 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
   }, [businessId, monthRange]);
 
   useEffect(() => {
-    if (!businessId || !monthRange) return;
+    if (!businessId || !monthRange || businessType !== "mobile_shop") return;
     const id = window.setTimeout(() => void loadTransactions(), 0);
     return () => window.clearTimeout(id);
-  }, [businessId, monthRange, loadTransactions]);
+  }, [businessId, monthRange, businessType, loadTransactions]);
 
-  const monthDailyNotes = useMemo(() => {
+  const detailLines = useMemo(() => {
     if (!monthRange) return [];
-    return collectDailyEntryNotesForRange(transactions, monthRange.start, monthRange.end);
-  }, [monthRange, transactions]);
+    return config.collect(transactions, monthRange.start, monthRange.end);
+  }, [config, monthRange, transactions]);
+
+  const totalAmount = useMemo(() => sumDetailLineAmounts(detailLines), [detailLines]);
 
   const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
 
@@ -155,10 +204,10 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
       await downloadDetailExportPdf({
         businessName,
         periodTitle,
-        kind: "notes",
-        notes: monthDailyNotes,
+        kind,
+        lines: detailLines,
       });
-      toast.success("Notes PDF downloaded.");
+      toast.success("PDF downloaded.");
     } catch (caught) {
       toast.error(getUserFriendlyError(caught));
     } finally {
@@ -175,9 +224,18 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
     );
   }
 
-  if (!parsedMonth || !monthRange) {
-    return null;
+  if (businessType !== "mobile_shop") {
+    return (
+      <div className="glass-panel rounded-[1.625rem] p-8 text-center">
+        <p className="text-lg font-semibold text-[var(--lv-heading)]">{config.title}</p>
+        <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
+          This section is available for mobile shop workspaces only.
+        </p>
+      </div>
+    );
   }
+
+  if (!parsedMonth || !monthRange) return null;
 
   return (
     <div className="space-y-6">
@@ -185,22 +243,23 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div>
             <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
-              Notes
+              {config.title}
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
-              Daily entry notes
+              {config.title}
             </h1>
+            <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">{config.subtitle}</p>
             {businessName ? (
-              <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">{businessName}</p>
+              <p className="mt-1 text-sm text-[var(--lv-muted-strong)]">{businessName}</p>
             ) : null}
           </div>
           <div className="flex flex-col gap-3 sm:items-end">
             <div className="flex flex-col gap-2 sm:items-end">
-              <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor="notes-month">
+              <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor={`${kind}-month`}>
                 Month
               </label>
               <input
-                id="notes-month"
+                id={`${kind}-month`}
                 type="month"
                 max={maxMonthInput}
                 value={monthInput}
@@ -218,23 +277,25 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
                 "bg-gradient-to-r from-cyan-400/95 to-[color-mix(in_srgb,var(--lv-accent)_72%,#0e7490)]",
               )}
             >
-              {pdfBusy ? "Generating PDF…" : "Export notes (PDF)"}
+              {pdfBusy ? "Generating PDF…" : `Download ${config.title.toLowerCase()} (PDF)`}
             </PressableButton>
           </div>
         </div>
       </section>
 
-      {!txError && txLoading ? (
-        <p className="text-sm text-slate-400">Loading notes…</p>
-      ) : null}
-
       <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
         <p className="mb-4 text-sm text-[var(--lv-muted-strong)]">
-          Notes saved from Daily Entry for{" "}
-          <span className="font-medium text-[var(--lv-heading)]">
-            {calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)}
-          </span>
-          . Add or edit them under Daily Entry for each date.
+          Entries for{" "}
+          <span className="font-medium text-[var(--lv-heading)]">{periodTitle}</span>
+          {detailLines.length > 0 ? (
+            <>
+              {" "}
+              · Total{" "}
+              <span className="font-medium text-[var(--lv-heading)]">
+                {formatDetailLineAmount(totalAmount)}
+              </span>
+            </>
+          ) : null}
         </p>
 
         {txError ? (
@@ -243,33 +304,53 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
           </p>
         ) : txLoading ? (
           <Skeleton className="h-32 w-full rounded-xl" />
-        ) : monthDailyNotes.length === 0 ? (
+        ) : detailLines.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="rounded-xl border border-dashed border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[var(--lv-surface-muted)] px-6 py-14 text-center dark:bg-white/[0.04]"
           >
-            <p className="text-base font-semibold text-[var(--lv-heading)]">No notes this month</p>
-            <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-              Open Daily Entry, pick a date, and use the day notes field at the bottom of the form.
-            </p>
+            <p className="text-base font-semibold text-[var(--lv-heading)]">{config.emptyTitle}</p>
+            <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">{config.emptyHint}</p>
           </motion.div>
         ) : (
-          <ul className="flex flex-col gap-4">
-            {monthDailyNotes.map((n) => (
-              <li
-                key={n.date}
-                className="rounded-xl border border-white/10 bg-[var(--lv-surface-muted)] p-4 dark:bg-white/[0.04]"
-              >
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--lv-accent)]">
-                  {formatNoteHeadingDate(n.date)}
-                </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--lv-heading)]">
-                  {noteToPlainText(n.html)}
-                </p>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto rounded-xl border border-white/10">
+            <table className="w-full min-w-[28rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-white/10 bg-[var(--lv-surface-muted)] text-xs font-semibold uppercase tracking-wide text-[var(--lv-muted-strong)] dark:bg-white/[0.04]">
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">{config.nameHeader}</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailLines.map((row, idx) => (
+                  <tr
+                    key={`${row.date}-${row.itemName}-${idx}`}
+                    className="border-b border-white/5 text-[var(--lv-heading)]"
+                  >
+                    <td className="lv-tabular-mono px-4 py-3 text-[var(--lv-accent)]">
+                      {formatNoteHeadingDate(row.date)}
+                    </td>
+                    <td className="px-4 py-3">{row.itemName}</td>
+                    <td className="lv-tabular-mono px-4 py-3 text-right font-medium">
+                      {formatDetailLineAmount(row.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-[var(--lv-surface-muted)] font-semibold dark:bg-white/[0.04]">
+                  <td className="px-4 py-3" colSpan={2}>
+                    Total
+                  </td>
+                  <td className="lv-tabular-mono px-4 py-3 text-right">
+                    {formatDetailLineAmount(totalAmount)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         )}
       </section>
     </div>

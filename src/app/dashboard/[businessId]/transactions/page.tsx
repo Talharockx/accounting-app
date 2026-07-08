@@ -3,12 +3,13 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
+  buildMobileDailyRows,
   mergeSaleBuyNamedLines,
   merchFormStringsToSaleBuy,
   parseMobileDailyFromTransactions,
   parseNonNegative,
+  sanitizeNonNegativeDecimalInput,
 } from "@/lib/dashboard/daily-entry";
-import { buildMobileDailyRows } from "@/lib/dashboard/daily-entry";
 import {
   buildRestaurantDailyRows,
   hydrateCompanySaleRows,
@@ -725,22 +726,6 @@ export default function TransactionsPage({
                 <h3 className="text-base font-semibold text-[var(--lv-heading)]">SIM</h3>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <MidnightField
-                    id="edit-m-sim-buy"
-                    label="SIM buy (shop cost)"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={editing.simBuy}
-                    onChange={(e) =>
-                      setEditing((p) =>
-                        p?.kind === "mobile_shop"
-                          ? { ...p, simBuy: String(Math.max(0, parseNonNegative(e.target.value))) }
-                          : p,
-                      )
-                    }
-                  />
-                  <MidnightField
                     id="edit-m-sim-sale"
                     label="SIM sale (retail)"
                     type="number"
@@ -748,13 +733,25 @@ export default function TransactionsPage({
                     step="0.01"
                     inputMode="decimal"
                     value={editing.simSale}
-                    onChange={(e) =>
-                      setEditing((p) =>
-                        p?.kind === "mobile_shop"
-                          ? { ...p, simSale: String(Math.max(0, parseNonNegative(e.target.value))) }
-                          : p,
-                      )
-                    }
+                    onChange={(e) => {
+                      const next = sanitizeNonNegativeDecimalInput(e.target.value);
+                      if (next === null) return;
+                      setEditing((p) => (p?.kind === "mobile_shop" ? { ...p, simSale: next } : p));
+                    }}
+                  />
+                  <MidnightField
+                    id="edit-m-sim-buy"
+                    label="SIM buy (shop cost)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={editing.simBuy}
+                    onChange={(e) => {
+                      const next = sanitizeNonNegativeDecimalInput(e.target.value);
+                      if (next === null) return;
+                      setEditing((p) => (p?.kind === "mobile_shop" ? { ...p, simBuy: next } : p));
+                    }}
                   />
                 </div>
               </section>
@@ -804,13 +801,11 @@ export default function TransactionsPage({
                     step="0.01"
                     inputMode="decimal"
                     value={editing.packageRWind}
-                    onChange={(e) =>
-                      setEditing((p) =>
-                        p?.kind === "mobile_shop"
-                          ? { ...p, packageRWind: String(Math.max(0, parseNonNegative(e.target.value))) }
-                          : p,
-                      )
-                    }
+                    onChange={(e) => {
+                      const next = sanitizeNonNegativeDecimalInput(e.target.value);
+                      if (next === null) return;
+                      setEditing((p) => (p?.kind === "mobile_shop" ? { ...p, packageRWind: next } : p));
+                    }}
                   />
                   <MidnightField
                     id="edit-m-pkg-v"
@@ -820,13 +815,11 @@ export default function TransactionsPage({
                     step="0.01"
                     inputMode="decimal"
                     value={editing.packageRVoda}
-                    onChange={(e) =>
-                      setEditing((p) =>
-                        p?.kind === "mobile_shop"
-                          ? { ...p, packageRVoda: String(Math.max(0, parseNonNegative(e.target.value))) }
-                          : p,
-                      )
-                    }
+                    onChange={(e) => {
+                      const next = sanitizeNonNegativeDecimalInput(e.target.value);
+                      if (next === null) return;
+                      setEditing((p) => (p?.kind === "mobile_shop" ? { ...p, packageRVoda: next } : p));
+                    }}
                   />
                 </div>
               </section>
@@ -871,13 +864,11 @@ export default function TransactionsPage({
                   step="0.01"
                   inputMode="decimal"
                   value={editing.posSale}
-                  onChange={(e) =>
-                    setEditing((p) =>
-                      p?.kind === "mobile_shop"
-                        ? { ...p, posSale: String(Math.max(0, parseNonNegative(e.target.value))) }
-                        : p,
-                    )
-                  }
+                  onChange={(e) => {
+                    const next = sanitizeNonNegativeDecimalInput(e.target.value);
+                    if (next === null) return;
+                    setEditing((p) => (p?.kind === "mobile_shop" ? { ...p, posSale: next } : p));
+                  }}
                 />
               </section>
 

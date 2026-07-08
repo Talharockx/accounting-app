@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useMemo } from "react";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
-import { parseNonNegative } from "@/lib/dashboard/daily-entry";
+import { sanitizeNonNegativeDecimalInput } from "@/lib/dashboard/daily-entry";
 import {
   GROCERY_FIXED_EXPENSE_CATEGORIES,
   type GroceryFixedExpenseCategory,
@@ -29,15 +29,21 @@ export function usePersonSaleListHelpers() {
         setter((prev) => prev.map((row, i) => (i === index ? { ...row, itemName } : row))),
       changeBank: (setter: Dispatch<SetStateAction<PersonSaleRowStr[]>>, index: number, bank: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, bank: String(Math.max(0, parseNonNegative(bank))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(bank);
+            if (next === null) return row;
+            return { ...row, bank: next };
+          }),
         ),
       changeCash: (setter: Dispatch<SetStateAction<PersonSaleRowStr[]>>, index: number, cash: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, cash: String(Math.max(0, parseNonNegative(cash))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(cash);
+            if (next === null) return row;
+            return { ...row, cash: next };
+          }),
         ),
     }),
     [],
@@ -56,9 +62,12 @@ export function useChequeListHelpers() {
         setter((prev) => prev.map((row, i) => (i === index ? { ...row, itemName } : row))),
       changeAmount: (setter: Dispatch<SetStateAction<ChequeRowStr[]>>, index: number, amount: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, amount: String(Math.max(0, parseNonNegative(amount))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(amount);
+            if (next === null) return row;
+            return { ...row, amount: next };
+          }),
         ),
       changeDueDate: (setter: Dispatch<SetStateAction<ChequeRowStr[]>>, index: number, dueDate: string) =>
         setter((prev) => prev.map((row, i) => (i === index ? { ...row, dueDate } : row))),
@@ -81,11 +90,9 @@ export function CompanyExpensesBlock({
   setRows: Dispatch<SetStateAction<NamedRowStr[]>>;
 }) {
   const changeAmount = (index: number, amount: string) => {
-    setRows((prev) =>
-      prev.map((row, i) =>
-        i === index ? { ...row, amount: String(Math.max(0, parseNonNegative(amount))) } : row,
-      ),
-    );
+    const next = sanitizeNonNegativeDecimalInput(amount);
+    if (next === null) return;
+    setRows((prev) => prev.map((row, i) => (i === index ? { ...row, amount: next } : row)));
   };
 
   return (

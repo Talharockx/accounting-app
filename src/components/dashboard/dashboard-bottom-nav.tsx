@@ -4,23 +4,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 
-import { WORKSPACE_NAV } from "./workspace-nav";
+import type { BusinessType } from "@/lib/business-types";
+
+import { workspaceNavForBusiness } from "./workspace-nav";
 
 type Props = {
   businessId: string;
+  businessType: BusinessType;
 };
 
 /** Primary workspace navigation on viewports &lt; 768px (replaces sidebar). */
-export function DashboardBottomNav({ businessId }: Props) {
+export function DashboardBottomNav({ businessId, businessType }: Props) {
   const pathname = usePathname();
+  const navItems = workspaceNavForBusiness(businessType);
 
   return (
     <nav
       className="fixed right-0 bottom-0 left-0 z-[60] pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden pointer-events-none"
       aria-label="Workspace"
     >
-      <div className="pointer-events-auto mx-3 flex max-w-lg items-stretch gap-1 rounded-2xl rounded-b-xl border border-[#ffffff10] bg-[#0B0E14]/94 px-2 py-2 shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md">
-        {WORKSPACE_NAV.map((item) => {
+      <div className="pointer-events-auto mx-3 flex max-w-lg items-stretch gap-0.5 overflow-x-auto rounded-2xl rounded-b-xl border border-[#ffffff10] bg-[#0B0E14]/94 px-2 py-2 shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md">
+        {navItems.map((item) => {
           const href = item.slug ? `/dashboard/${businessId}/${item.slug}` : `/dashboard/${businessId}`;
           const active = pathname === href;
           return (

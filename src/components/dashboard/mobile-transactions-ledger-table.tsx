@@ -63,10 +63,7 @@ function LedgerRowCells({ row }: { row: MobileTransactionLedgerRow }) {
       <AmountCell value={row.totalCashSale} />
       <AmountCell value={row.cashExpense} />
       <AmountCell value={row.bankExpense} />
-      <AmountCell value={row.remainingCashSale} />
-      <AmountCell value={row.remainingBankSale} />
       <AmountCell value={row.lastBalance} profitTone />
-      <AmountCell value={row.merchandiseProfit} profitTone />
     </>
   );
 }
@@ -91,10 +88,10 @@ const HEADERS: { label: string; title?: string }[] = [
   { label: "Total cash sale", title: "Total sale − POS" },
   { label: "Cash expense" },
   { label: "Bank expense" },
-  { label: "Rem. cash sale", title: "Total cash sale − Cash expense" },
-  { label: "Rem. bank sale", title: "POS − Bank expense" },
-  { label: "Last balance", title: "Total sale − (Cash expense + Bank expense)" },
-  { label: "Profit (sale−buy)", title: "Sim + mobile + accessories profit" },
+  {
+    label: "Total profit",
+    title: "Total sale − (Cash expense + Bank expense)",
+  },
 ];
 
 function IconPencil({ className }: { className?: string }) {
@@ -138,7 +135,7 @@ export function MobileTransactionsLedgerTable({
 
   return (
     <div className="overflow-x-auto rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl">
-      <table className="lv-tabular-mono w-full min-w-[2800px] text-left text-sm">
+      <table className="lv-tabular-mono w-full min-w-[2200px] text-left text-sm">
         <thead>
           <tr className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] text-[0.65rem] uppercase tracking-wide text-[var(--lv-muted-strong)]">
             {HEADERS.map((h) => (
@@ -190,10 +187,7 @@ export function MobileTransactionsLedgerTable({
             <AmountCell value={totals.totalCashSale} emphasize />
             <AmountCell value={totals.cashExpense} emphasize />
             <AmountCell value={totals.bankExpense} emphasize />
-            <AmountCell value={totals.remainingCashSale} emphasize />
-            <AmountCell value={totals.remainingBankSale} emphasize />
             <AmountCell value={totals.lastBalance} profitTone />
-            <AmountCell value={totals.merchandiseProfit} profitTone />
             <td className="sticky right-0 z-[1] bg-[color-mix(in_srgb,var(--lv-card)_75%,transparent)] px-3 py-3.5 backdrop-blur-sm" aria-hidden />
           </tr>
         </tfoot>

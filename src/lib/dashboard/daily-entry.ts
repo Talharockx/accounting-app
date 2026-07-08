@@ -74,6 +74,32 @@ export function parseNonNegative(value: string, fallback = 0): number {
   return Math.max(0, n);
 }
 
+/**
+ * Sanitize currency field text while typing — keeps partial decimals ("10.", "12.0", "12.01").
+ * Returns null when the edit should be ignored (invalid characters).
+ */
+export function sanitizeNonNegativeDecimalInput(
+  value: string,
+  options?: { maxFractionDigits?: number },
+): string | null {
+  const maxFractionDigits = options?.maxFractionDigits ?? 2;
+  const normalized = value.trim().replace(/,/g, ".");
+
+  if (normalized === "") return "0";
+  if (!/^\d*\.?\d*$/.test(normalized)) return null;
+  if (normalized === ".") return "0.";
+
+  const dotIndex = normalized.indexOf(".");
+  if (dotIndex !== -1) {
+    const fraction = normalized.slice(dotIndex + 1);
+    if (fraction.length > maxFractionDigits) {
+      return normalized.slice(0, dotIndex + 1 + maxFractionDigits);
+    }
+  }
+
+  return normalized;
+}
+
 export function parseEmbeddedMetaFromDescription(description: string | null | undefined): Record<string, unknown> {
   const d = description ?? "";
   const idx = d.indexOf(META_EMBED_MARK);

@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useMemo } from "react";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
-import { parseNonNegative } from "@/lib/dashboard/daily-entry";
+import { sanitizeNonNegativeDecimalInput } from "@/lib/dashboard/daily-entry";
 
 export type NamedRowStr = { itemName: string; amount: string };
 
@@ -24,9 +24,12 @@ export function useNamedListHelpers() {
         setter((prev) => prev.map((row, i) => (i === index ? { ...row, itemName } : row))),
       changeAmount: (setter: Dispatch<SetStateAction<NamedRowStr[]>>, index: number, amount: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, amount: String(Math.max(0, parseNonNegative(amount))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(amount);
+            if (next === null) return row;
+            return { ...row, amount: next };
+          }),
         ),
     }),
     [],
@@ -45,15 +48,21 @@ export function useMerchListHelpers() {
         setter((prev) => prev.map((row, i) => (i === index ? { ...row, itemName } : row))),
       changeRetail: (setter: Dispatch<SetStateAction<MerchRowStr[]>>, index: number, retail: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, retail: String(Math.max(0, parseNonNegative(retail))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(retail);
+            if (next === null) return row;
+            return { ...row, retail: next };
+          }),
         ),
       changeBuy: (setter: Dispatch<SetStateAction<MerchRowStr[]>>, index: number, buy: string) =>
         setter((prev) =>
-          prev.map((row, i) =>
-            i === index ? { ...row, buy: String(Math.max(0, parseNonNegative(buy))) } : row,
-          ),
+          prev.map((row, i) => {
+            if (i !== index) return row;
+            const next = sanitizeNonNegativeDecimalInput(buy);
+            if (next === null) return row;
+            return { ...row, buy: next };
+          }),
         ),
     }),
     [],

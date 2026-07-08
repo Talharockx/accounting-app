@@ -1,5 +1,5 @@
 import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
-import { mobileProfitFromTransactions } from "@/lib/dashboard/daily-entry";
+import { buildMobileTransactionLedgerRow } from "@/lib/dashboard/mobile-transaction-ledger";
 import { restaurantProfitFromTransactions } from "@/lib/dashboard/restaurant-daily-entry";
 import type { ReportsBusinessType } from "@/lib/business-types";
 import { groceryProfitFromTransactions } from "@/lib/dashboard/grocery-daily-entry";
@@ -45,17 +45,16 @@ export function dailySalesExpensesProfit(
       profit: t.totalProfit,
     };
   }
-  const t = mobileProfitFromTransactions(dayRows);
-  const purchases = t.purchases;
-  const operating = t.expenses;
+  const ledger = buildMobileTransactionLedgerRow(rows, dateISO);
+  const operating = ledger.cashExpense + ledger.bankExpense;
   return {
-    /** Matches Overview “Total sale” (SIM + handsets/accessories + packages + repairs + extras; no POS). */
-    sales: t.totalSaleSheet,
-    purchases,
+    /** Matches ledger “Total sale” (SIM + mobile + accessories + repair + extras + R.Wind + R.Voda). */
+    sales: ledger.totalSale,
+    purchases: ledger.simBuy + ledger.mobileBuy + ledger.accessoryBuy,
     operatingExpenses: operating,
-    expenses: purchases + operating,
-    /** Mobile shop: client sheet last balance (see `mobileProfitFromTransactions`). */
-    profit: t.lastBalance,
+    expenses: operating,
+    /** Total sale − (cash expense + bank expense) — same as ledger “Total profit”. */
+    profit: ledger.lastBalance,
   };
 }
 

@@ -504,8 +504,8 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
             <Section title="SIM" hint="Shop SIM cost and SIM retail.">
               <StatGrid
                 items={[
-                  { label: "SIM buy (shop cost)", value: formatCurrency(mobileDraft.sim_buy) },
                   { label: "SIM sale (retail)", value: formatCurrency(mobileDraft.sim_sale) },
+                  { label: "SIM buy (shop cost)", value: formatCurrency(mobileDraft.sim_buy) },
                 ]}
               />
             </Section>
