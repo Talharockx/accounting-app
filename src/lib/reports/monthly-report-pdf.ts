@@ -46,7 +46,7 @@ export type MonthlyReportPdfInput = {
   useClientLastBalanceLabels?: boolean;
   /** Mobile shop: client-style executive summary (replaces four KPI boxes when set). */
   mobileExecutiveSummary?: MobileExecutiveSummary | null;
-  /** Restaurant: month grid (Bank/Cash/Glovo/…/Total Spesa). */
+  /** Restaurant: month grid (Bank/Cash/Glovo/…/Total Spesa/Total Profit). */
   restaurantReportMatrix?: RestaurantReportMatrix | null;
 };
 
@@ -122,6 +122,7 @@ function isMobileSheetProfitColumn(col: string): boolean {
     col === "Mobile profit" ||
     col === "Access. profit" ||
     col === "Total profit" ||
+    col === "Total Profit" ||
     col === "Last balance" ||
     col === "Profit (sale−buy)"
   );
@@ -476,7 +477,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
             matrixBlurbSingleOperatingCol
               ? "All amounts in EUR · Daily operating total (matches “Operating expenses” in the summary table). Use Daily Entry named cash/bank lines to split this into person columns."
               : restaurantMatrix
-                ? "All amounts in EUR · Date, bank/cash sales, Glovo / Just Eat / Deliveroo, total sale, Kebab & C & C, other spesa (by name), rent, person expenses (by name), total spesa."
+                ? "All amounts in EUR · Date, bank sale, cash sale, Glovo, Just Eat, Deliveroo, total sale, total spesa, total profit (sale − spesa)."
                 : mobileLedgerPdf
                   ? "All amounts in EUR · Daily ledger through Total profit (Total sale − Cash expense − Bank expense)."
                   : "All amounts in EUR · Same buckets as Mobile Daily Entry: SIM, mobile & accessory sale/buy, R.Wind & R.Voda, repair, extra, POS, and total cash vs bank expenses per calendar day.",

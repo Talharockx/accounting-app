@@ -9,6 +9,7 @@ import {
 import { isBlankNote } from "@/lib/utils/rich-text";
 
 export const SOURCE_GROCERY = "daily_entry_grocery" as const;
+export const DESC_GROCERY_NOTES = "Grocery: Daily Notes";
 
 export type GroceryMetaLine =
   | "bank_sales"
@@ -26,22 +27,31 @@ export type GroceryFixedExpenseCategory =
   | "bill"
   | "accountant"
   | "pos_expense"
+  /** Prefer this over legacy `pos_expense`. */
+  | "bank_expense"
   | "salary"
   | "extra"
   | "vodafone";
 
+/** Active fixed operating lines shown in Daily Entry (legacy categories still total when present). */
 export const GROCERY_FIXED_EXPENSE_CATEGORIES: {
   key: GroceryFixedExpenseCategory;
   label: string;
   hint: string;
 }[] = [
-  { key: "rent", label: "Rent (Affitto)", hint: "Monthly or periodic rent payments." },
-  { key: "bill", label: "Bills (Bolletta)", hint: "Utility and supplier bills." },
-  { key: "accountant", label: "Accountant salary (Commercialista)", hint: "Accountant / bookkeeper fees." },
-  { key: "pos_expense", label: "POS expense", hint: "Card terminal or POS operating costs." },
-  { key: "salary", label: "Salary (other than accountant)", hint: "Staff wages excluding accountant." },
-  { key: "extra", label: "Extra expense", hint: "Miscellaneous operating costs." },
-  { key: "vodafone", label: "Vodafone", hint: "Phone / internet provider costs." },
+  { key: "bank_expense", label: "Bank expense", hint: "Bank / card payment expense for the day." },
+];
+
+/** All known fixed categories (legacy + current) for totals / hydration. */
+export const GROCERY_ALL_FIXED_EXPENSE_CATEGORIES: GroceryFixedExpenseCategory[] = [
+  "rent",
+  "bill",
+  "accountant",
+  "pos_expense",
+  "bank_expense",
+  "salary",
+  "extra",
+  "vodafone",
 ];
 
 export type GroceryPersonSaleLine = {
@@ -139,23 +149,22 @@ export function resolveCompanyDropdownLabel(name: string): string {
 }
 
 export function emptyCompanyExpenseRow(): { itemName: string; amount: string } {
-  return { itemName: GROCERY_TRACKED_COMPANIES[0].label, amount: "0" };
+  return { itemName: "", amount: "0" };
 }
 
 export function emptyCompanyExpenseRows(): { itemName: string; amount: string }[] {
-  return GROCERY_TRACKED_COMPANIES.map((c) => ({ itemName: c.label, amount: "0" }));
+  return [emptyCompanyExpenseRow()];
 }
 
+/** Freeform company name + amount lines (not the old fixed Amadari / Cip / Eurospin grid). */
 export function hydrateCompanyExpenseRows(lines: NamedMoneyLine[]): { itemName: string; amount: string }[] {
-  const byLabel = new Map<string, number>();
-  for (const line of lines) {
-    const label = resolveCompanyDropdownLabel(line.item_name);
-    byLabel.set(label, (byLabel.get(label) ?? 0) + line.amount);
-  }
-  return GROCERY_TRACKED_COMPANIES.map((c) => ({
-    itemName: c.label,
-    amount: String(byLabel.get(c.label) ?? 0),
-  }));
+  const rows = lines
+    .filter((line) => line.item_name.trim() || line.amount > 0)
+    .map((line) => ({
+      itemName: line.item_name,
+      amount: String(line.amount),
+    }));
+  return rows.length > 0 ? rows : emptyCompanyExpenseRows();
 }
 
 function emptyGroceryDayTotals(): GroceryDayTotals {
@@ -213,6 +222,7 @@ function descCheque(name: string, index: number) {
 }
 
 function fixedCategoryLabel(category: GroceryFixedExpenseCategory): string {
+  if (category === "pos_expense" || category === "bank_expense") return "Bank expense";
   return GROCERY_FIXED_EXPENSE_CATEGORIES.find((c) => c.key === category)?.label ?? category;
 }
 
@@ -377,7 +387,7 @@ export function buildGroceryDailyRows(input: GroceryDailyInput): TransactionInse
       business_id: input.business_id,
       transaction_type: "expense",
       amount: 0,
-      description: "Grocery: Daily Notes",
+      description: DESC_GROCERY_NOTES,
       transaction_date: input.transaction_date,
       created_by_user_id: input.created_by_user_id,
       metadata: {
@@ -504,7 +514,7 @@ export function groceryProfitFromTransactions(rows: TransactionWithMeta[]): Groc
       else if (category === "bill") totals.bolletta += amt;
       else if (category === "accountant") totals.commercialista += amt;
       else if (category === "salary") totals.stipendio += amt;
-      else if (category === "pos_expense") totals.spesaPos += amt;
+      else if (category === "pos_expense" || category === "bank_expense") totals.spesaPos += amt;
       else if (category === "vodafone") totals.vodafone += amt;
       else if (category === "extra") totals.extra += amt;
     }
@@ -596,7 +606,7 @@ export function groceryFixedFromForm(
   sections: Record<GroceryFixedExpenseCategory, { itemName: string; amount: string }[]>,
 ): GroceryFixedExpenseLine[] {
   const out: GroceryFixedExpenseLine[] = [];
-  for (const { key } of GROCERY_FIXED_EXPENSE_CATEGORIES) {
+  for (const key of GROCERY_ALL_FIXED_EXPENSE_CATEGORIES) {
     for (const row of sections[key] ?? []) {
       const amount = parseNonNegative(row.amount);
       if (amount <= 0) continue;
@@ -614,39 +624,42 @@ export function emptyGroceryFixedSections(): Record<
   GroceryFixedExpenseCategory,
   { itemName: string; amount: string }[]
 > {
-  return {
-    rent: [{ itemName: "", amount: "0" }],
-    bill: [{ itemName: "", amount: "0" }],
-    accountant: [{ itemName: "", amount: "0" }],
-    pos_expense: [{ itemName: "", amount: "0" }],
-    salary: [{ itemName: "", amount: "0" }],
-    extra: [{ itemName: "", amount: "0" }],
-    vodafone: [{ itemName: "", amount: "0" }],
-  };
+  const sections = {} as Record<GroceryFixedExpenseCategory, { itemName: string; amount: string }[]>;
+  for (const key of GROCERY_ALL_FIXED_EXPENSE_CATEGORIES) {
+    sections[key] = [{ itemName: "", amount: "0" }];
+  }
+  return sections;
 }
 
 export function hydrateGroceryFixedSections(
   fixed: GroceryFixedExpenseLine[],
 ): Record<GroceryFixedExpenseCategory, { itemName: string; amount: string }[]> {
-  const sections: Record<GroceryFixedExpenseCategory, { itemName: string; amount: string }[]> = {
-    rent: [],
-    bill: [],
-    accountant: [],
-    pos_expense: [],
-    salary: [],
-    extra: [],
-    vodafone: [],
-  };
+  const sections = {} as Record<GroceryFixedExpenseCategory, { itemName: string; amount: string }[]>;
+  for (const key of GROCERY_ALL_FIXED_EXPENSE_CATEGORIES) {
+    sections[key] = [];
+  }
   for (const line of fixed) {
-    sections[line.category].push({
+    const key = line.category;
+    if (!sections[key]) sections[key] = [];
+    sections[key].push({
       itemName: line.label ?? "",
       amount: String(line.amount),
     });
   }
-  for (const { key } of GROCERY_FIXED_EXPENSE_CATEGORIES) {
+  for (const key of GROCERY_ALL_FIXED_EXPENSE_CATEGORIES) {
     if (sections[key].length === 0) {
       sections[key] = [{ itemName: "", amount: "0" }];
     }
   }
   return sections;
+}
+
+/** Sum POS + bank expense fixed lines for the Daily Entry “Bank expense” field. */
+export function groceryBankExpenseAmount(fixed: GroceryFixedExpenseLine[]): number {
+  return fixed.reduce((sum, line) => {
+    if (line.category === "bank_expense" || line.category === "pos_expense") {
+      return sum + Math.max(0, line.amount);
+    }
+    return sum;
+  }, 0);
 }

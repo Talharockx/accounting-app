@@ -75,8 +75,6 @@ export function RestaurantTransactionsTable({
     { key: "kebabPurchase", label: "Kebab" },
     { key: "ccPurchase", label: "C & C" },
     { key: "otherSpesa", label: "Other spesa" },
-    { key: "rent", label: "Rent" },
-    { key: "personPurchases", label: "Person purch." },
     { key: "totalSpesa", label: "Total spesa" },
     { key: "totalProfit", label: "Profit / loss", profit: true },
   ];

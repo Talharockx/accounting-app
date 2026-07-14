@@ -44,8 +44,6 @@ import {
 import { GlassFormCard } from "@/components/ui/glass-form-card";
 import {
   ChequesBlock,
-  CompanyExpensesBlock,
-  GroceryFixedExpensesBlock,
   PersonSalesBlock,
   emptyCheque,
   emptyPersonSale,
@@ -59,16 +57,14 @@ import { PressableButton } from "@/components/ui/pressable";
 import { businessTypeLabel, type BusinessType } from "@/lib/business-types";
 import {
   buildGroceryDailyRows,
-  emptyGroceryFixedSections,
+  emptyCompanyExpenseRows,
+  groceryBankExpenseAmount,
   groceryChequesFromForm,
-  groceryFixedFromForm,
   groceryNamedLinesFromForm,
   groceryPersonSalesFromForm,
   groceryProfitFromTransactions,
   hydrateCompanyExpenseRows,
-  hydrateGroceryFixedSections,
   parseGroceryDailyFromTransactions,
-  emptyCompanyExpenseRows,
 } from "@/lib/dashboard/grocery-daily-entry";
 import {
   RestaurantDailyEntryFields,
@@ -108,8 +104,6 @@ export default function DailyEntryPage({
   const [restCompanySales, setRestCompanySales] = useState([emptyCompanySaleRow()]);
   const [restCompanySpesa, setRestCompanySpesa] = useState([emptySpesaCompanyRow()]);
   const [restOtherSpesa, setRestOtherSpesa] = useState<NamedRowStr[]>([emptyNamed()]);
-  const [restRent, setRestRent] = useState("0");
-  const [restPersonPurchases, setRestPersonPurchases] = useState<NamedRowStr[]>([emptyNamed()]);
   const [restNotes, setRestNotes] = useState("");
 
   const [simBuy, setSimBuy] = useState("0");
@@ -129,9 +123,8 @@ export default function DailyEntryPage({
   const [groceryCash, setGroceryCash] = useState("0");
   const [personSales, setPersonSales] = useState<PersonSaleRowStr[]>([emptyPersonSale()]);
   const [companyExpenses, setCompanyExpenses] = useState<NamedRowStr[]>(emptyCompanyExpenseRows());
-  const [personExpenses, setPersonExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
   const [cheques, setCheques] = useState<ChequeRowStr[]>([emptyCheque()]);
-  const [fixedExpenseSections, setFixedExpenseSections] = useState(emptyGroceryFixedSections);
+  const [groceryBankExpense, setGroceryBankExpense] = useState("0");
   const [groceryNotes, setGroceryNotes] = useState("");
 
   const applyRestaurantDraftStrings = useCallback(
@@ -143,12 +136,6 @@ export default function DailyEntryPage({
       setRestOtherSpesa(
         draft.other_spesa.length
           ? draft.other_spesa.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
-          : [emptyNamed()],
-      );
-      setRestRent(String(draft.rent));
-      setRestPersonPurchases(
-        draft.person_purchases.length
-          ? draft.person_purchases.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
           : [emptyNamed()],
       );
       setRestNotes(draft.notes ?? "");
@@ -214,12 +201,12 @@ export default function DailyEntryPage({
           cash: String(r.cash),
         })),
       );
-      setCompanyExpenses(hydrateCompanyExpenseRows(draft.company_expenses));
-      setPersonExpenses(
-        draft.person_expenses.map((r) => ({
-          itemName: r.item_name,
-          amount: String(r.amount),
-        })),
+      setCompanyExpenses(
+        hydrateCompanyExpenseRows([
+          ...draft.company_expenses,
+          ...draft.person_expenses,
+          ...draft.kametti_expenses,
+        ]),
       );
       setCheques(
         draft.cheques.map((r) => ({
@@ -229,7 +216,7 @@ export default function DailyEntryPage({
           paid: r.paid,
         })),
       );
-      setFixedExpenseSections(hydrateGroceryFixedSections(draft.fixed_expenses));
+      setGroceryBankExpense(String(groceryBankExpenseAmount(draft.fixed_expenses)));
       setGroceryNotes(draft.notes ?? "");
     },
     [],
@@ -372,8 +359,8 @@ export default function DailyEntryPage({
       company_sales: restaurantCompanySalesFromForm(restCompanySales),
       company_spesa: restaurantCompanySpesaFromForm(restCompanySpesa),
       other_spesa: restaurantNamedLinesFromForm(restOtherSpesa),
-      rent: parseNonNegative(restRent),
-      person_purchases: restaurantNamedLinesFromForm(restPersonPurchases),
+      rent: 0,
+      person_purchases: [],
       notes: restNotes,
     };
     const previewRows = buildRestaurantDailyRows({
@@ -391,15 +378,17 @@ export default function DailyEntryPage({
     return restaurantDayHasContent(previewRows) || !isBlankNote(restNotes);
   };
   const groceryEntryHasContent = () => {
+    const bankExpenseAmt = parseNonNegative(groceryBankExpense);
     const draft = {
       bank_sales: parseNonNegative(groceryBank),
       cash_sales: parseNonNegative(groceryCash),
       person_sales: groceryPersonSalesFromForm(personSales),
       company_expenses: groceryNamedLinesFromForm(companyExpenses),
-      person_expenses: groceryNamedLinesFromForm(personExpenses),
+      person_expenses: [],
       kametti_expenses: [],
       cheques: groceryChequesFromForm(cheques),
-      fixed_expenses: groceryFixedFromForm(fixedExpenseSections),
+      fixed_expenses:
+        bankExpenseAmt > 0 ? [{ category: "bank_expense" as const, amount: bankExpenseAmt }] : [],
       notes: groceryNotes,
     };
     const totals = groceryProfitFromTransactions(
@@ -419,7 +408,6 @@ export default function DailyEntryPage({
     return (
       totals.totalSale +
         totals.spesaTotal +
-        totals.personExpenses +
         parseNonNegative(groceryBank) +
         parseNonNegative(groceryCash) >
         0 || !isBlankNote(groceryNotes)
@@ -497,8 +485,8 @@ export default function DailyEntryPage({
           company_sales: restaurantCompanySalesFromForm(restCompanySales),
           company_spesa: restaurantCompanySpesaFromForm(restCompanySpesa),
           other_spesa: restaurantNamedLinesFromForm(restOtherSpesa),
-          rent: parseNonNegative(restRent),
-          person_purchases: restaurantNamedLinesFromForm(restPersonPurchases),
+          rent: 0,
+          person_purchases: [],
           notes: restNotes,
         });
 
@@ -507,6 +495,7 @@ export default function DailyEntryPage({
           if (insertError) throw insertError;
         }
       } else if (businessType === "grocery") {
+        const bankExpenseAmt = parseNonNegative(groceryBankExpense);
         const rows = buildGroceryDailyRows({
           business_id: businessId,
           created_by_user_id: userId,
@@ -515,10 +504,11 @@ export default function DailyEntryPage({
           cash_sales: parseNonNegative(groceryCash),
           person_sales: groceryPersonSalesFromForm(personSales),
           company_expenses: groceryNamedLinesFromForm(companyExpenses),
-          person_expenses: groceryNamedLinesFromForm(personExpenses),
+          person_expenses: [],
           kametti_expenses: [],
           cheques: groceryChequesFromForm(cheques),
-          fixed_expenses: groceryFixedFromForm(fixedExpenseSections),
+          fixed_expenses:
+            bankExpenseAmt > 0 ? [{ category: "bank_expense", amount: bankExpenseAmt }] : [],
           notes: groceryNotes,
         });
 
@@ -642,29 +632,28 @@ export default function DailyEntryPage({
                   helpers={personSaleHelpers}
                 />
 
-                <CompanyExpensesBlock
-                  idPrefix="g-company-exp"
+                <NamedLinesOnly
+                  idPrefix="g-expense"
+                  title="Expenses"
+                  hint="Company name and expense amount — add as many lines as needed."
+                  nameFieldLabel="Company name"
                   rows={companyExpenses}
                   setRows={setCompanyExpenses}
+                  helpers={namedListHelpers}
                 />
 
-                <NamedLinesOnly
-                  idPrefix="g-person-exp"
-                  title="Expenses by person"
-                  hint="Person name and expense amount for that day."
-                  nameFieldLabel="Person name"
-                  rows={personExpenses}
-                  setRows={setPersonExpenses}
-                  helpers={namedListHelpers}
+                <MidnightField
+                  id="grocery-bank-expense"
+                  label="Bank expense"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={groceryBankExpense}
+                  onChange={(e) => clampInput(e.target.value, setGroceryBankExpense)}
                 />
 
                 <ChequesBlock idPrefix="g-cheque" rows={cheques} setRows={setCheques} helpers={chequeHelpers} />
-
-                <GroceryFixedExpensesBlock
-                  sections={fixedExpenseSections}
-                  setSections={setFixedExpenseSections}
-                  helpers={namedListHelpers}
-                />
 
                 <MidnightField
                   id="grocery-notes"
@@ -691,10 +680,6 @@ export default function DailyEntryPage({
                 otherSpesa={restOtherSpesa}
                 setOtherSpesa={setRestOtherSpesa}
                 namedHelpers={namedListHelpers}
-                rent={restRent}
-                onRentChange={setRestRent}
-                personPurchases={restPersonPurchases}
-                setPersonPurchases={setRestPersonPurchases}
                 notes={restNotes}
                 onNotesChange={setRestNotes}
                 saving={saving}

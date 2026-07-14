@@ -486,9 +486,9 @@ export default function ReportsPage({
         <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
           <h2 className="mb-2 text-lg font-bold tracking-tight text-[var(--lv-heading)]">Monthly entries</h2>
           <p className="mb-6 max-w-3xl text-sm text-[var(--lv-muted-strong)]">
-            Date, bank &amp; cash sales, Glovo / Just Eat / Deliveroo, total sale, Kebab &amp; C &amp; C, other spesa
-            (one column per company name), rent, person expenses (one column per person), and total spesa — same layout
-            in the PDF export.
+            Date, bank sale, cash sale, Glovo, Just Eat, Deliveroo, total sale, total spesa, and total profit — same
+            layout in the PDF export.{" "}
+            <strong className="text-[var(--lv-heading)]">Total profit</strong> = Total sale − Total spesa.
           </p>
           {txError ? (
             <p className="text-sm font-medium text-[var(--lv-traffic-critical)]" role="alert">

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { MidnightField } from "@/components/ui/midnight-field";
 import { PressableButton } from "@/components/ui/pressable";
 import { cn } from "@/lib/utils/cn";
@@ -240,78 +240,6 @@ export function CompanySpesaBlock({
   );
 }
 
-type SpesaTab = "rent" | "person";
-
-export function RestaurantRentPersonTabs({
-  rent,
-  onRentChange,
-  personRows,
-  setPersonRows,
-  namedHelpers,
-  idPrefix,
-}: {
-  rent: string;
-  onRentChange: (value: string) => void;
-  personRows: NamedRowStr[];
-  setPersonRows: Dispatch<SetStateAction<NamedRowStr[]>>;
-  namedHelpers: NamedListHelpers;
-  idPrefix: string;
-}) {
-  const [tab, setTab] = useState<SpesaTab>("rent");
-  const pill =
-    "rounded-xl px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--lv-accent)_50%,transparent)]";
-  const pillActive = cn(
-    pill,
-    "bg-[var(--lv-accent-soft)] text-[var(--lv-heading)] ring-1 ring-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)]",
-  );
-  const pillIdle = cn(
-    pill,
-    "border border-[color-mix(in_srgb,var(--lv-glass-edge)_55%,transparent)] bg-[var(--lv-liquid-fill)] text-[var(--lv-muted-strong)] backdrop-blur-md hover:border-[color-mix(in_srgb,var(--lv-glass-edge)_75%,transparent)] hover:text-[var(--lv-heading)]",
-  );
-
-  return (
-    <section className="flex flex-col gap-4">
-      <div>
-        <h3 className="text-lg font-semibold text-[var(--lv-heading)]">Rent &amp; person purchases</h3>
-        <p className="text-xs text-[var(--lv-muted-strong)]">Switch tabs to enter rent or named person purchases.</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={tab === "rent" ? pillActive : pillIdle} onClick={() => setTab("rent")}>
-          Rent
-        </button>
-        <button type="button" className={tab === "person" ? pillActive : pillIdle} onClick={() => setTab("person")}>
-          Person purchases
-        </button>
-      </div>
-      {tab === "rent" ? (
-        <MidnightField
-          id={`${idPrefix}-rent`}
-          label="Rent (Affitto)"
-          type="number"
-          min={0}
-          step="0.01"
-          inputMode="decimal"
-          value={rent}
-          onChange={(e) => {
-            const next = sanitizeNonNegativeDecimalInput(e.target.value);
-            if (next !== null) onRentChange(next);
-          }}
-        />
-      ) : (
-        <NamedLinesOnly
-          idPrefix={`${idPrefix}-person`}
-          title="Person purchases"
-          hint="Person name and purchase amount — add as many lines as needed."
-          nameFieldLabel="Person name"
-          rows={personRows}
-          setRows={setPersonRows}
-          helpers={namedHelpers}
-        />
-      )}
-    </section>
-  );
-}
-
 export function RestaurantDailyEntryFields({
   idPrefix,
   bank,
@@ -327,10 +255,6 @@ export function RestaurantDailyEntryFields({
   otherSpesa,
   setOtherSpesa,
   namedHelpers,
-  rent,
-  onRentChange,
-  personPurchases,
-  setPersonPurchases,
   notes,
   onNotesChange,
   saving,
@@ -349,10 +273,6 @@ export function RestaurantDailyEntryFields({
   otherSpesa: NamedRowStr[];
   setOtherSpesa: Dispatch<SetStateAction<NamedRowStr[]>>;
   namedHelpers: NamedListHelpers;
-  rent: string;
-  onRentChange: (v: string) => void;
-  personPurchases: NamedRowStr[];
-  setPersonPurchases: Dispatch<SetStateAction<NamedRowStr[]>>;
   notes: string;
   onNotesChange: (v: string) => void;
   saving?: boolean;
@@ -401,7 +321,7 @@ export function RestaurantDailyEntryFields({
       <section className="flex flex-col gap-3">
         <h3 className="text-lg font-semibold text-[var(--lv-heading)]">Purchases &amp; spesa</h3>
         <p className="text-xs text-[var(--lv-muted-strong)]">
-          Company spesa, other supplier costs, rent, and person purchases roll into Total Spesa.
+          Company spesa and other supplier costs roll into Total Spesa.
         </p>
       </section>
 
@@ -420,15 +340,6 @@ export function RestaurantDailyEntryFields({
         rows={otherSpesa}
         setRows={setOtherSpesa}
         helpers={namedHelpers}
-      />
-
-      <RestaurantRentPersonTabs
-        idPrefix={idPrefix}
-        rent={rent}
-        onRentChange={onRentChange}
-        personRows={personPurchases}
-        setPersonRows={setPersonPurchases}
-        namedHelpers={namedHelpers}
       />
 
       <MidnightField

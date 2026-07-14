@@ -5,6 +5,7 @@ import {
   SOURCE_RESTAURANT,
   type TransactionWithMeta,
 } from "@/lib/dashboard/daily-entry";
+import { SOURCE_GROCERY } from "@/lib/dashboard/grocery-daily-entry";
 import { isBlankNote } from "@/lib/utils/rich-text";
 
 export type DailyNoteEntry = {
@@ -13,7 +14,7 @@ export type DailyNoteEntry = {
   html: string;
 };
 
-/** Daily-entry notes (`daily_notes` line) for restaurant or mobile shop, in a date range. */
+/** Daily-entry notes (`daily_notes` line) for restaurant, mobile, or grocery, in a date range. */
 export function collectDailyEntryNotesForRange(
   rows: TransactionWithMeta[],
   rangeStartISO: string,
@@ -24,7 +25,7 @@ export function collectDailyEntryNotesForRange(
     if (row.transaction_date < rangeStartISO || row.transaction_date > rangeEndISO) continue;
     const m = getMetadata(row.metadata, row.description);
     const src = metaString(m, "source");
-    if (src !== SOURCE_RESTAURANT && src !== SOURCE_MOBILE) continue;
+    if (src !== SOURCE_RESTAURANT && src !== SOURCE_MOBILE && src !== SOURCE_GROCERY) continue;
     if (metaString(m, "line") !== "daily_notes") continue;
     const html = typeof m["notes"] === "string" ? m["notes"] : "";
     if (isBlankNote(html)) continue;

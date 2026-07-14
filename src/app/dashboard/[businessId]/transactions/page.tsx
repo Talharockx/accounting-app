@@ -140,8 +140,8 @@ export default function TransactionsPage({
       company_sales: restaurantCompanySalesFromForm(r.companySales),
       company_spesa: restaurantCompanySpesaFromForm(r.companySpesa),
       other_spesa: restaurantNamedLinesFromForm(r.otherSpesa),
-      rent: parseNonNegative(r.rent),
-      person_purchases: restaurantNamedLinesFromForm(r.personPurchases),
+      rent: 0,
+      person_purchases: [],
       notes: r.notes,
     }).map((row) => ({
       amount: row.amount,
@@ -362,8 +362,8 @@ export default function TransactionsPage({
           company_sales: restaurantCompanySalesFromForm(r.companySales),
           company_spesa: restaurantCompanySpesaFromForm(r.companySpesa),
           other_spesa: restaurantNamedLinesFromForm(r.otherSpesa),
-          rent: parseNonNegative(r.rent),
-          person_purchases: restaurantNamedLinesFromForm(r.personPurchases),
+          rent: 0,
+          person_purchases: [],
           notes: r.notes,
         });
 
@@ -504,7 +504,7 @@ export default function TransactionsPage({
             ? "Mobile shop ledger: one row per day with sale, buy, profit, POS, expenses, and balance columns. Filter by month, then optionally by date."
             : businessType === "grocery"
               ? "Grocery ledger: daily bank/cash sales, person sales, expenses, cheques, and net profit."
-              : "Restaurant ledger: daily sales, company spesa, rent, person purchases, and profit / loss."}
+              : "Restaurant ledger: daily sales, company spesa, and profit / loss."}
         </p>
         <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="flex flex-col gap-1.5">
@@ -668,16 +668,6 @@ export default function TransactionsPage({
                   })
                 }
                 namedHelpers={namedListHelpers}
-                rent={editing.rent}
-                onRentChange={(value) => setEditing((p) => (p?.kind === "restaurant" ? { ...p, rent: value } : p))}
-                personPurchases={editing.personPurchases}
-                setPersonPurchases={(action) =>
-                  setEditing((p) => {
-                    if (!p || p.kind !== "restaurant") return p;
-                    const next = typeof action === "function" ? action(p.personPurchases) : action;
-                    return { ...p, personPurchases: next };
-                  })
-                }
                 notes={editing.notes}
                 onNotesChange={(value) => setEditing((p) => (p?.kind === "restaurant" ? { ...p, notes: value } : p))}
                 saving={saving}

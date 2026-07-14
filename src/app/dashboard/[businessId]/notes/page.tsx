@@ -9,6 +9,7 @@ import {
   DESC_REST_NOTES,
   type TransactionWithMeta,
 } from "@/lib/dashboard/daily-entry";
+import { DESC_GROCERY_NOTES } from "@/lib/dashboard/grocery-daily-entry";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { collectDailyEntryNotesForRange } from "@/lib/reports/period-notes";
@@ -89,7 +90,7 @@ export default function NotesPage({ params }: { params: Promise<{ businessId: st
     setTxLoading(true);
     setTxError("");
     /** Daily notes are a handful of rows per month; never pull the full ledger here (was 20k). */
-    const notesDescriptionOr = `description.like.${DESC_REST_NOTES}%,description.like.${DESC_MOBILE_NOTES}%`;
+    const notesDescriptionOr = `description.like.${DESC_REST_NOTES}%,description.like.${DESC_MOBILE_NOTES}%,description.like.${DESC_GROCERY_NOTES}%`;
     try {
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>

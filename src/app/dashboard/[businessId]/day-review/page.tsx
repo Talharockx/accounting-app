@@ -405,8 +405,6 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
                   { label: "Kebab purchase", value: formatCurrency(restaurantTotals.kebabPurchase) },
                   { label: "C & C purchase", value: formatCurrency(restaurantTotals.ccPurchase) },
                   { label: "Other spesa", value: formatCurrency(restaurantTotals.otherSpesa) },
-                  { label: "Rent", value: formatCurrency(restaurantTotals.rent) },
-                  { label: "Person purchases", value: formatCurrency(restaurantTotals.personPurchases) },
                   { label: "Total spesa", value: formatCurrency(restaurantTotals.totalSpesa) },
                   { label: "Total profit / loss", value: formatCurrency(restaurantTotals.totalProfit) },
                 ]}
@@ -449,18 +447,6 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
                 rows={restaurantDraft.other_spesa}
                 nameHeader="Company / detail"
                 emptyLabel="No other spesa for this date."
-              />
-            </Section>
-
-            <Section title="Rent" hint="Daily or periodic rent (Affitto).">
-              <StatGrid items={[{ label: "Rent", value: formatCurrency(restaurantDraft.rent) }]} />
-            </Section>
-
-            <Section title="Person purchases" hint="Named person purchases for this day.">
-              <NamedAmountTable
-                rows={restaurantDraft.person_purchases}
-                nameHeader="Person"
-                emptyLabel="No person purchases for this date."
               />
             </Section>
 

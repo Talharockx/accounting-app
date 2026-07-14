@@ -2,6 +2,7 @@
 
 import { formatCurrency } from "@/lib/utils/formatters";
 import type { RestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
+import { cn } from "@/lib/utils/cn";
 
 export function RestaurantReportsTable({ matrix }: { matrix: RestaurantReportMatrix }) {
   if (matrix.rows.length === 0) {
@@ -14,7 +15,7 @@ export function RestaurantReportsTable({ matrix }: { matrix: RestaurantReportMat
 
   return (
     <div className="overflow-x-auto">
-      <table className="lv-tabular-mono min-w-[1100px] w-full border-collapse text-left text-sm">
+      <table className="lv-tabular-mono min-w-[980px] w-full border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_55%,transparent)] text-xs uppercase tracking-wide text-[var(--lv-muted-strong)]">
             <th className="sticky left-0 z-[1] whitespace-nowrap bg-[var(--lv-liquid-fill)] px-4 py-3 font-medium">
@@ -40,14 +41,21 @@ export function RestaurantReportsTable({ matrix }: { matrix: RestaurantReportMat
                 const v = row.amounts[col] ?? 0;
                 const isTotalSale = col === "Total Sale";
                 const isTotalSpesa = col === "Total Spesa";
+                const isTotalProfit = col === "Total Profit";
+                const showAlways = isTotalProfit || isTotalSale || isTotalSpesa;
                 return (
                   <td
                     key={col}
-                    className={`whitespace-nowrap px-4 py-3.5 text-right ${
-                      isTotalSale ? "font-semibold" : ""
-                    } ${isTotalSpesa ? "font-semibold text-[var(--lv-muted-strong)]" : ""}`}
+                    className={cn(
+                      "whitespace-nowrap px-4 py-3.5 text-right",
+                      isTotalSale && "font-semibold",
+                      isTotalSpesa && "font-semibold text-[var(--lv-muted-strong)]",
+                      isTotalProfit && "font-semibold",
+                      isTotalProfit && v > 0 && "text-[var(--lv-traffic-positive)]",
+                      isTotalProfit && v < 0 && "text-[var(--lv-traffic-critical)]",
+                    )}
                   >
-                    {v > 0 ? formatCurrency(v) : "—"}
+                    {showAlways || v !== 0 ? formatCurrency(v) : "—"}
                   </td>
                 );
               })}
@@ -62,11 +70,22 @@ export function RestaurantReportsTable({ matrix }: { matrix: RestaurantReportMat
             >
               Grand total
             </th>
-            {matrix.columnTotals.map((total, i) => (
-              <td key={matrix.columns[i]} className="whitespace-nowrap px-4 py-3.5 text-right">
-                {formatCurrency(total)}
-              </td>
-            ))}
+            {matrix.columnTotals.map((total, i) => {
+              const col = matrix.columns[i] ?? "";
+              const isProfit = col === "Total Profit";
+              return (
+                <td
+                  key={col}
+                  className={cn(
+                    "whitespace-nowrap px-4 py-3.5 text-right",
+                    isProfit && total > 0 && "text-[var(--lv-traffic-positive)]",
+                    isProfit && total < 0 && "text-[var(--lv-traffic-critical)]",
+                  )}
+                >
+                  {formatCurrency(total)}
+                </td>
+              );
+            })}
           </tr>
         </tfoot>
       </table>
