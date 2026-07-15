@@ -8,11 +8,11 @@ import { sanitizeNonNegativeDecimalInput } from "@/lib/dashboard/daily-entry";
 
 export type NamedRowStr = { itemName: string; amount: string };
 
-export const emptyNamed = (): NamedRowStr => ({ itemName: "", amount: "0" });
+export const emptyNamed = (): NamedRowStr => ({ itemName: "", amount: "" });
 
 export type MerchRowStr = { itemName: string; retail: string; buy: string };
 
-export const emptyMerch = (): MerchRowStr => ({ itemName: "", retail: "0", buy: "0" });
+export const emptyMerch = (): MerchRowStr => ({ itemName: "", retail: "", buy: "" });
 
 export function useNamedListHelpers() {
   return useMemo(

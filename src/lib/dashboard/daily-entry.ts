@@ -76,7 +76,7 @@ export function parseNonNegative(value: string, fallback = 0): number {
 
 /**
  * Sanitize currency field text while typing — keeps partial decimals ("10.", "12.0", "12.01").
- * Returns null when the edit should be ignored (invalid characters).
+ * Empty stays empty (do not force "0"). Returns null when the edit should be ignored.
  */
 export function sanitizeNonNegativeDecimalInput(
   value: string,
@@ -85,7 +85,7 @@ export function sanitizeNonNegativeDecimalInput(
   const maxFractionDigits = options?.maxFractionDigits ?? 2;
   const normalized = value.trim().replace(/,/g, ".");
 
-  if (normalized === "") return "0";
+  if (normalized === "") return "";
   if (!/^\d*\.?\d*$/.test(normalized)) return null;
   if (normalized === ".") return "0.";
 
@@ -98,6 +98,11 @@ export function sanitizeNonNegativeDecimalInput(
   }
 
   return normalized;
+}
+
+/** Display helper for money inputs — blank when zero so forms don't show a default 0. */
+export function formatMoneyInputValue(amount: number): string {
+  return amount > 0 ? String(amount) : "";
 }
 
 export function parseEmbeddedMetaFromDescription(description: string | null | undefined): Record<string, unknown> {

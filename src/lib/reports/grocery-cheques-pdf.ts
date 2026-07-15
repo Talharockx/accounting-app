@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 
-import type { GroceryExpenseLineRow } from "@/lib/reports/collect-grocery-expense-lines";
+import type { GroceryChequeLineRow } from "@/lib/reports/collect-grocery-cheques";
 import {
   PDF_ACCENT,
   PDF_BLACK,
@@ -13,13 +13,14 @@ import {
 } from "@/lib/reports/pdf-print-theme";
 import { formatCurrency } from "@/lib/utils/formatters";
 
-export type GroceryExpensesPdfInput = {
+export type GroceryChequesPdfInput = {
   businessName: string;
   periodTitle: string;
-  lines: GroceryExpenseLineRow[];
+  lines: GroceryChequeLineRow[];
 };
 
 function isoToDisplayDDMMYYYY(iso: string): string {
+  if (!iso) return "—";
   const [y, m, d] = iso.split("-");
   if (!y || !m || !d) return iso;
   return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
@@ -29,16 +30,16 @@ function safeFilePart(name: string): string {
   return name.trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 64) || "Business";
 }
 
-export async function generateGroceryExpensesPdfBlob(input: GroceryExpensesPdfInput): Promise<Blob> {
+export async function generateGroceryChequesPdfBlob(input: GroceryChequesPdfInput): Promise<Blob> {
   const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
   ]);
 
-  const doc = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const doc = new JsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 48;
+  const margin = 36;
   const contentW = pageW - margin * 2;
   const total = input.lines.reduce((acc, r) => acc + r.amount, 0);
 
@@ -46,62 +47,60 @@ export async function generateGroceryExpensesPdfBlob(input: GroceryExpensesPdfIn
     let y = margin;
     doc.setFillColor(...PDF_ACCENT);
     doc.rect(margin, y, contentW, 2, "F");
-    y += 22;
+    y += 20;
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
+    doc.setFontSize(18);
     doc.setTextColor(...PDF_BLACK);
     doc.text(input.businessName, margin, y, { maxWidth: contentW });
-    y += 28;
-
-    doc.setFontSize(14);
-    doc.text("Expenses", margin, y);
     y += 22;
 
+    doc.setFontSize(13);
+    doc.text("Cheques", margin, y);
+    y += 18;
+
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(...PDF_MUTED);
     doc.text(`Period: ${input.periodTitle}`, margin, y);
-    y += 16;
+    y += 14;
     doc.text(`Generated: ${new Date().toLocaleString("en-GB")}`, margin, y);
   };
 
-  const startY = margin + 22 + 28 + 22 + 16 + 16 + 28;
-  const dateW = 78;
-  const categoryW = 110;
-  const amountW = 90;
-  const detailW = contentW - dateW - categoryW - amountW;
+  const startY = margin + 20 + 22 + 18 + 14 + 14 + 16;
 
   autoTable(doc, {
     theme: "grid",
     startY,
     tableWidth: contentW,
     margin: { left: margin, right: margin, top: margin, bottom: margin },
-    head: [["Date", "Category", "Detail", "Amount (EUR)"]],
+    head: [["Entry date", "Cheque name", "Amount (EUR)", "Due date", "Paid"]],
     body: input.lines.length
       ? input.lines.map((r) => [
           isoToDisplayDDMMYYYY(r.date),
-          r.category,
-          r.detail,
+          r.name,
           formatCurrency(r.amount),
+          isoToDisplayDDMMYYYY(r.dueDate),
+          r.paid ? "Yes" : "No",
         ])
-      : [["—", "—", "No expenses for this period.", "—"]],
-    foot: input.lines.length ? [["Total", "", "", formatCurrency(total)]] : undefined,
+      : [["—", "No cheques for this period.", "—", "—", "—"]],
+    foot: input.lines.length ? [["Total", "", formatCurrency(total), "", ""]] : undefined,
     showFoot: "lastPage",
     styles: { ...printTableBaseStyles, fontSize: 9 },
     headStyles: printTableHeadStyles,
     alternateRowStyles: printTableAltRowStyles,
     footStyles: printTableFootStyles,
     columnStyles: {
-      0: { cellWidth: dateW, halign: "left" },
-      1: { cellWidth: categoryW, halign: "left" },
-      2: { cellWidth: detailW, halign: "left" },
-      3: { cellWidth: amountW, halign: "right" },
+      0: { cellWidth: 90, halign: "left" },
+      1: { cellWidth: "auto", halign: "left" },
+      2: { cellWidth: 100, halign: "right" },
+      3: { cellWidth: 90, halign: "left" },
+      4: { cellWidth: 60, halign: "center" },
     },
     didParseCell: (data) => {
-      if (data.column.index === 3) data.cell.styles.halign = "right";
-      else if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
-      else if (data.section === "foot") data.cell.styles.halign = data.column.index === 3 ? "right" : "left";
+      if (data.column.index === 2) data.cell.styles.halign = "right";
+      if (data.column.index === 4) data.cell.styles.halign = "center";
+      if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
     },
     willDrawPage: (data) => {
       paintPrintPageBackground(doc, pageW, pageH);
@@ -115,17 +114,17 @@ export async function generateGroceryExpensesPdfBlob(input: GroceryExpensesPdfIn
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(...PDF_MUTED);
-    doc.text(`LedgerView · Expenses · Page ${i} of ${pageCount}`, margin, pageH - 28);
+    doc.text(`LedgerView · Cheques · Page ${i} of ${pageCount}`, margin, pageH - 22);
   }
 
   return doc.output("blob");
 }
 
-export async function downloadGroceryExpensesPdf(input: GroceryExpensesPdfInput): Promise<void> {
-  const blob = await generateGroceryExpensesPdfBlob(input);
+export async function downloadGroceryChequesPdf(input: GroceryChequesPdfInput): Promise<void> {
+  const blob = await generateGroceryChequesPdfBlob(input);
   const url = URL.createObjectURL(blob);
   const monthFileTag = input.periodTitle.replace(/\s+/g, "_");
-  const filename = `${safeFilePart(input.businessName)}_expenses_${monthFileTag}.pdf`;
+  const filename = `${safeFilePart(input.businessName)}_cheques_${monthFileTag}.pdf`;
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

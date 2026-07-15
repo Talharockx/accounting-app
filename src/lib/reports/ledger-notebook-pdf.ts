@@ -2,6 +2,15 @@ import type { jsPDF } from "jspdf";
 
 import type { LedgerNotebookRowWithBalance } from "@/lib/dashboard/ledger-notebook";
 import { formatLedgerMoney, formatMoneyOrBlank } from "@/lib/dashboard/ledger-notebook";
+import {
+  PDF_ACCENT,
+  PDF_BLACK,
+  PDF_MUTED,
+  paintPrintPageBackground,
+  printTableAltRowStyles,
+  printTableBaseStyles,
+  printTableHeadStyles,
+} from "@/lib/reports/pdf-print-theme";
 
 export type LedgerNotebookPdfInput = {
   businessName: string;
@@ -11,13 +20,6 @@ export type LedgerNotebookPdfInput = {
   rows: LedgerNotebookRowWithBalance[];
 };
 
-const NAVY: [number, number, number] = [11, 18, 32];
-const NAVY_PANEL: [number, number, number] = [17, 28, 46];
-const NAVY_STRIPE: [number, number, number] = [22, 36, 58];
-const EMERALD: [number, number, number] = [16, 185, 129];
-const TEXT: [number, number, number] = [241, 245, 249];
-const MUTED: [number, number, number] = [148, 163, 184];
-
 function isoToDisplayDDMMYYYY(iso: string): string {
   const [y, m, d] = iso.split("-");
   if (!y || !m || !d) return iso;
@@ -26,11 +28,6 @@ function isoToDisplayDDMMYYYY(iso: string): string {
 
 function safeFilePart(name: string): string {
   return name.trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 64) || "Business";
-}
-
-function paintPageBackground(doc: jsPDF, pageW: number, pageH: number): void {
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 0, pageW, pageH, "F");
 }
 
 export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInput): Promise<Blob> {
@@ -60,13 +57,13 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
 
   const drawHeader = () => {
     let y = margin;
-    doc.setFillColor(...EMERALD);
-    doc.rect(margin, y, contentW, 3, "F");
+    doc.setFillColor(...PDF_ACCENT);
+    doc.rect(margin, y, contentW, 2, "F");
     y += 20;
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.setTextColor(...TEXT);
+    doc.setTextColor(...PDF_BLACK);
     doc.text(input.businessName, margin, y, { maxWidth: contentW });
     y += 22;
 
@@ -76,7 +73,7 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...PDF_MUTED);
     doc.text(`Period: ${input.periodTitle}`, margin, y);
     y += 14;
     doc.text(`Opening balance: ${formatLedgerMoney(input.openingBalance)}`, margin, y);
@@ -87,33 +84,17 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
   const startY = margin + 20 + 22 + 18 + 14 + 12 + 12 + 16;
 
   autoTable(doc, {
-    theme: "plain",
+    theme: "grid",
     startY,
     tableWidth: contentW,
     margin: { left: margin, right: margin, top: margin, bottom: margin },
     head,
     body,
-    styles: {
-      font: "helvetica",
-      fontSize: 8,
-      cellPadding: { top: 6, right: 6, bottom: 6, left: 6 },
-      textColor: TEXT,
-      lineColor: [30, 41, 59],
-      lineWidth: 0.25,
-      valign: "middle",
-      fillColor: NAVY_PANEL,
-      overflow: "linebreak",
-    },
-    headStyles: {
-      fillColor: EMERALD,
-      textColor: NAVY,
-      fontStyle: "bold",
-      lineWidth: 0,
-      valign: "middle",
-    },
-    alternateRowStyles: { fillColor: NAVY_STRIPE, lineWidth: 0 },
+    styles: printTableBaseStyles,
+    headStyles: printTableHeadStyles,
+    alternateRowStyles: printTableAltRowStyles,
     willDrawPage: (data) => {
-      paintPageBackground(doc, pageW, pageH);
+      paintPrintPageBackground(doc, pageW, pageH);
       if (data.pageNumber === 1) drawHeader();
     },
   });
@@ -123,7 +104,7 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
     doc.setPage(i);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...PDF_MUTED);
     doc.text(`LedgerView · Notebook · Page ${i} of ${pageCount}`, margin, pageH - 22);
   }
 

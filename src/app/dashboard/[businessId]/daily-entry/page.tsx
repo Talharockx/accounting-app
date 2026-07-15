@@ -11,6 +11,7 @@ import {
   parseMobileDailyFromTransactions,
   parseNonNegative,
   sanitizeNonNegativeDecimalInput,
+  formatMoneyInputValue,
 } from "@/lib/dashboard/daily-entry";
 import {
   buildRestaurantDailyRows,
@@ -100,44 +101,47 @@ export default function DailyEntryPage({
   const [error, setError] = useState("");
   const [entryDate, setEntryDate] = useState(getTodayLocalISO());
 
-  const [restCash, setRestCash] = useState("0");
-  const [restBank, setRestBank] = useState("0");
+  const [restCash, setRestCash] = useState("");
+  const [restBank, setRestBank] = useState("");
   const [restCompanySales, setRestCompanySales] = useState([emptyCompanySaleRow()]);
   const [restCompanySpesa, setRestCompanySpesa] = useState([emptySpesaCompanyRow()]);
   const [restOtherSpesa, setRestOtherSpesa] = useState<NamedRowStr[]>([emptyNamed()]);
   const [restNotes, setRestNotes] = useState("");
 
-  const [simBuy, setSimBuy] = useState("0");
-  const [simSale, setSimSale] = useState("0");
+  const [simBuy, setSimBuy] = useState("");
+  const [simSale, setSimSale] = useState("");
   const [mobileMerch, setMobileMerch] = useState<MerchRowStr[]>([emptyMerch()]);
   const [accessoryMerch, setAccessoryMerch] = useState<MerchRowStr[]>([emptyMerch()]);
-  const [packageRWind, setPackageRWind] = useState("0");
-  const [packageRVoda, setPackageRVoda] = useState("0");
+  const [packageRWind, setPackageRWind] = useState("");
+  const [packageRVoda, setPackageRVoda] = useState("");
   const [repairs, setRepairs] = useState<NamedRowStr[]>([emptyNamed()]);
   const [extras, setExtras] = useState<NamedRowStr[]>([emptyNamed()]);
-  const [posSale, setPosSale] = useState("0");
+  const [posSale, setPosSale] = useState("");
   const [mobileNotes, setMobileNotes] = useState("");
   const [cashExpenses, setCashExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
   const [bankExpenses, setBankExpenses] = useState<NamedRowStr[]>([emptyNamed()]);
 
-  const [groceryBank, setGroceryBank] = useState("0");
-  const [groceryCash, setGroceryCash] = useState("0");
+  const [groceryBank, setGroceryBank] = useState("");
+  const [groceryCash, setGroceryCash] = useState("");
   const [personSales, setPersonSales] = useState<PersonSaleRowStr[]>([emptyPersonSale()]);
   const [companyExpenses, setCompanyExpenses] = useState<NamedRowStr[]>(emptyCompanyExpenseRows());
   const [cheques, setCheques] = useState<ChequeRowStr[]>([emptyCheque()]);
-  const [groceryBankExpense, setGroceryBankExpense] = useState("0");
-  const [groceryCashExpense, setGroceryCashExpense] = useState("0");
+  const [groceryBankExpense, setGroceryBankExpense] = useState("");
+  const [groceryCashExpense, setGroceryCashExpense] = useState("");
   const [groceryNotes, setGroceryNotes] = useState("");
 
   const applyRestaurantDraftStrings = useCallback(
     (draft: ReturnType<typeof parseRestaurantDailyFromTransactions>) => {
-      setRestBank(String(draft.bank_sales));
-      setRestCash(String(draft.cash_sales));
+      setRestBank(formatMoneyInputValue(draft.bank_sales));
+      setRestCash(formatMoneyInputValue(draft.cash_sales));
       setRestCompanySales(hydrateCompanySaleRows(draft.company_sales));
       setRestCompanySpesa(hydrateSpesaCompanyRows(draft.company_spesa));
       setRestOtherSpesa(
         draft.other_spesa.length
-          ? draft.other_spesa.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
+          ? draft.other_spesa.map((r) => ({
+              itemName: r.item_name,
+              amount: formatMoneyInputValue(r.amount),
+            }))
           : [emptyNamed()],
       );
       setRestNotes(draft.notes ?? "");
@@ -146,61 +150,61 @@ export default function DailyEntryPage({
   );
 
   const applyMobileDraftStrings = useCallback((draft: ReturnType<typeof parseMobileDailyFromTransactions>) => {
-    setSimBuy(String(draft.sim_buy));
-    setSimSale(String(draft.sim_sale));
+    setSimBuy(formatMoneyInputValue(draft.sim_buy));
+    setSimSale(formatMoneyInputValue(draft.sim_sale));
     setMobileMerch(
       mergeSaleBuyNamedLines(draft.mobile_sales, draft.mobile_buys).map((r) => ({
         itemName: r.item_name,
-        retail: String(r.retail),
-        buy: String(r.buy),
+        retail: formatMoneyInputValue(r.retail),
+        buy: formatMoneyInputValue(r.buy),
       })),
     );
     setAccessoryMerch(
       mergeSaleBuyNamedLines(draft.accessory_sales, draft.accessory_buys).map((r) => ({
         itemName: r.item_name,
-        retail: String(r.retail),
-        buy: String(r.buy),
+        retail: formatMoneyInputValue(r.retail),
+        buy: formatMoneyInputValue(r.buy),
       })),
     );
-    setPackageRWind(String(draft.package_r_wind));
-    setPackageRVoda(String(draft.package_r_voda));
+    setPackageRWind(formatMoneyInputValue(draft.package_r_wind));
+    setPackageRVoda(formatMoneyInputValue(draft.package_r_voda));
     setRepairs(
       draft.repairs.map((r) => ({
         itemName: r.item_name,
-        amount: String(r.amount),
+        amount: formatMoneyInputValue(r.amount),
       })),
     );
     setExtras(
       draft.extras.map((r) => ({
         itemName: r.item_name,
-        amount: String(r.amount),
+        amount: formatMoneyInputValue(r.amount),
       })),
     );
-    setPosSale(String(draft.pos_sale));
+    setPosSale(formatMoneyInputValue(draft.pos_sale));
     setMobileNotes(draft.notes ?? "");
     setCashExpenses(
       draft.cash_expenses.map((r) => ({
         itemName: r.item_name,
-        amount: String(r.amount),
+        amount: formatMoneyInputValue(r.amount),
       })),
     );
     setBankExpenses(
       draft.bank_expenses.map((r) => ({
         itemName: r.item_name,
-        amount: String(r.amount),
+        amount: formatMoneyInputValue(r.amount),
       })),
     );
   }, []);
 
   const applyGroceryDraftStrings = useCallback(
     (draft: ReturnType<typeof parseGroceryDailyFromTransactions>) => {
-      setGroceryBank(String(draft.bank_sales));
-      setGroceryCash(String(draft.cash_sales));
+      setGroceryBank(formatMoneyInputValue(draft.bank_sales));
+      setGroceryCash(formatMoneyInputValue(draft.cash_sales));
       setPersonSales(
         draft.person_sales.map((r) => ({
           itemName: r.item_name,
-          bank: String(r.bank),
-          cash: String(r.cash),
+          bank: formatMoneyInputValue(r.bank),
+          cash: formatMoneyInputValue(r.cash),
         })),
       );
       setCompanyExpenses(
@@ -213,13 +217,13 @@ export default function DailyEntryPage({
       setCheques(
         draft.cheques.map((r) => ({
           itemName: r.item_name,
-          amount: String(r.amount),
+          amount: formatMoneyInputValue(r.amount),
           dueDate: r.due_date,
           paid: r.paid,
         })),
       );
-      setGroceryBankExpense(String(groceryBankExpenseAmount(draft.fixed_expenses)));
-      setGroceryCashExpense(String(groceryCashExpenseAmount(draft.fixed_expenses)));
+      setGroceryBankExpense(formatMoneyInputValue(groceryBankExpenseAmount(draft.fixed_expenses)));
+      setGroceryCashExpense(formatMoneyInputValue(groceryCashExpenseAmount(draft.fixed_expenses)));
       setGroceryNotes(draft.notes ?? "");
     },
     [],

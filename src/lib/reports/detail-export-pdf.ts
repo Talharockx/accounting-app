@@ -2,6 +2,16 @@ import type { jsPDF } from "jspdf";
 
 import type { MobileDetailLineRow } from "@/lib/reports/collect-mobile-detail-lines";
 import type { DailyNoteEntry } from "@/lib/reports/period-notes";
+import {
+  PDF_ACCENT,
+  PDF_BLACK,
+  PDF_MUTED,
+  paintPrintPageBackground,
+  printTableAltRowStyles,
+  printTableBaseStyles,
+  printTableFootStyles,
+  printTableHeadStyles,
+} from "@/lib/reports/pdf-print-theme";
 import { formatCurrency } from "@/lib/utils/formatters";
 import { noteToPlainText } from "@/lib/utils/rich-text";
 
@@ -14,14 +24,6 @@ export type DetailExportPdfInput = {
   notes?: DailyNoteEntry[];
   lines?: MobileDetailLineRow[];
 };
-
-const NAVY: [number, number, number] = [11, 18, 32];
-const NAVY_PANEL: [number, number, number] = [17, 28, 46];
-const NAVY_STRIPE: [number, number, number] = [22, 36, 58];
-const EMERALD: [number, number, number] = [16, 185, 129];
-const EMERALD_DEEP: [number, number, number] = [6, 78, 59];
-const TEXT: [number, number, number] = [241, 245, 249];
-const MUTED: [number, number, number] = [148, 163, 184];
 
 const KIND_LABELS: Record<DetailExportKind, string> = {
   notes: "Daily Entry Notes",
@@ -40,20 +42,15 @@ function safeFilePart(name: string): string {
   return name.trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 64) || "Business";
 }
 
-function paintPageBackground(doc: jsPDF, pageW: number, pageH: number): void {
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 0, pageW, pageH, "F");
-}
-
 function drawHeader(doc: jsPDF, input: DetailExportPdfInput, margin: number, contentW: number): void {
   let y = margin;
-  doc.setFillColor(...EMERALD);
-  doc.rect(margin, y, contentW, 3, "F");
+  doc.setFillColor(...PDF_ACCENT);
+  doc.rect(margin, y, contentW, 2, "F");
   y += 22;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
-  doc.setTextColor(...TEXT);
+  doc.setTextColor(...PDF_BLACK);
   doc.text(input.businessName, margin, y, { maxWidth: contentW });
   y += 28;
 
@@ -63,7 +60,7 @@ function drawHeader(doc: jsPDF, input: DetailExportPdfInput, margin: number, con
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.setTextColor(...MUTED);
+  doc.setTextColor(...PDF_MUTED);
   doc.text(`Period: ${input.periodTitle}`, margin, y);
   y += 16;
   doc.text(`Generated: ${new Date().toLocaleString("en-GB")}`, margin, y);
@@ -88,25 +85,10 @@ function lineTableColumnStyles(contentW: number) {
 
 function sharedTableOptions(margin: number) {
   return {
-    theme: "plain" as const,
-    styles: {
-      font: "helvetica",
-      fontSize: 9,
-      cellPadding: { top: 8, right: 10, bottom: 8, left: 10 },
-      textColor: TEXT,
-      lineColor: [30, 41, 59] as [number, number, number],
-      lineWidth: 0.25,
-      valign: "middle" as const,
-      fillColor: NAVY_PANEL,
-      overflow: "linebreak" as const,
-    },
-    headStyles: {
-      fillColor: EMERALD,
-      textColor: NAVY,
-      fontStyle: "bold" as const,
-      lineWidth: 0,
-    },
-    alternateRowStyles: { fillColor: NAVY_STRIPE, lineWidth: 0 },
+    theme: "grid" as const,
+    styles: { ...printTableBaseStyles, fontSize: 9 },
+    headStyles: printTableHeadStyles,
+    alternateRowStyles: printTableAltRowStyles,
     margin: { left: margin, right: margin, top: margin, bottom: margin },
   };
 }
@@ -114,7 +96,7 @@ function sharedTableOptions(margin: number) {
 function alignLineTableCell(data: {
   section: "head" | "body" | "foot";
   column: { index: number };
-  cell: { styles: { halign?: string } };
+  cell: { styles: { hallign?: string; halign?: string } };
 }) {
   if (data.column.index === 0) {
     data.cell.styles.halign = "left";
@@ -145,7 +127,7 @@ export async function generateDetailExportPdfBlob(input: DetailExportPdfInput): 
 
   const pageHooks = {
     willDrawPage: (data: { pageNumber: number }) => {
-      paintPageBackground(doc, pageW, pageH);
+      paintPrintPageBackground(doc, pageW, pageH);
       if (data.pageNumber === 1) {
         drawHeader(doc, input, margin, contentW);
       }
@@ -194,12 +176,7 @@ export async function generateDetailExportPdfBlob(input: DetailExportPdfInput): 
       foot: lines.length ? [["Total", "", formatCurrency(total)]] : undefined,
       showFoot: "lastPage",
       columnStyles,
-      footStyles: {
-        fillColor: EMERALD_DEEP,
-        textColor: [209, 250, 229],
-        fontStyle: "bold",
-        lineWidth: 0,
-      },
+      footStyles: printTableFootStyles,
       didParseCell: alignLineTableCell,
     });
   }
@@ -209,7 +186,7 @@ export async function generateDetailExportPdfBlob(input: DetailExportPdfInput): 
     doc.setPage(i);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...PDF_MUTED);
     doc.text(`LedgerView · ${KIND_LABELS[input.kind]} · Page ${i} of ${pageCount}`, margin, pageH - 28);
   }
 
@@ -220,14 +197,14 @@ export async function downloadDetailExportPdf(input: DetailExportPdfInput): Prom
   const blob = await generateDetailExportPdfBlob(input);
   const url = URL.createObjectURL(blob);
   const monthFileTag = input.periodTitle.replace(/\s+/g, "_");
-  const kindTag = input.kind.replace(/_/g, "-");
-  const filename = `${safeFilePart(input.businessName)}_${kindTag}_${monthFileTag}.pdf`;
+  const kindSlug = input.kind.replace(/_/g, "-");
+  const filename = `${safeFilePart(input.businessName)}_${kindSlug}_${monthFileTag}.pdf`;
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
+  a.remove();
   URL.revokeObjectURL(url);
 }

@@ -9,6 +9,21 @@ import type { MobilePersonExpenseMatrixReport } from "@/lib/reports/mobile-perso
 import type { RestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
 import { formatCurrency } from "@/lib/utils/formatters";
 import type { ProfitTrendDatum, SalesVsExpensesDatum } from "@/components/dashboard/reports-performance-charts";
+import {
+  PDF_ACCENT,
+  PDF_BLACK,
+  PDF_HEADER_BG,
+  PDF_LINE,
+  PDF_MUTED,
+  PDF_NEGATIVE,
+  PDF_STRIPE,
+  PDF_WHITE,
+  paintPrintPageBackground,
+  printTableAltRowStyles,
+  printTableBaseStyles,
+  printTableFootStyles,
+  printTableHeadStyles,
+} from "./pdf-print-theme";
 
 /** Month-level mobile sheet KPIs for the PDF executive summary. */
 export type MobileExecutiveSummary = {
@@ -49,16 +64,6 @@ export type MonthlyReportPdfInput = {
   /** Restaurant: month grid (Bank/Cash/Glovo/…/Total Spesa/Total Profit). */
   restaurantReportMatrix?: RestaurantReportMatrix | null;
 };
-
-const NAVY: [number, number, number] = [11, 18, 32];
-const NAVY_PANEL: [number, number, number] = [17, 28, 46];
-const NAVY_STRIPE: [number, number, number] = [22, 36, 58];
-const EMERALD: [number, number, number] = [16, 185, 129];
-const EMERALD_SOFT: [number, number, number] = [52, 211, 153];
-const EMERALD_DEEP: [number, number, number] = [6, 78, 59];
-const TEXT: [number, number, number] = [241, 245, 249];
-const MUTED: [number, number, number] = [148, 163, 184];
-const ROSE: [number, number, number] = [251, 113, 133];
 
 function money(n: number): string {
   return formatCurrency(n);
@@ -128,11 +133,6 @@ function isMobileSheetProfitColumn(col: string): boolean {
   );
 }
 
-function paintPageBackground(doc: jsPDF, pageW: number, pageH: number): void {
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 0, pageW, pageH, "F");
-}
-
 export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput): Promise<Blob> {
   const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
     import("jspdf"),
@@ -154,27 +154,27 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
   const margin = 48;
   const contentW = pageW - margin * 2;
 
-  paintPageBackground(doc, pageW, pageH);
+  paintPrintPageBackground(doc, pageW, pageH);
   let y = margin;
 
-  doc.setFillColor(...EMERALD);
-  doc.rect(margin, y, contentW, 3, "F");
+  doc.setFillColor(...PDF_ACCENT);
+  doc.rect(margin, y, contentW, 1.5, "F");
   y += 22;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
-  doc.setTextColor(...TEXT);
+  doc.setTextColor(...PDF_BLACK);
   doc.text(input.businessName, margin, y, { maxWidth: contentW });
   y += 30;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(12);
-  doc.setTextColor(...MUTED);
+  doc.setTextColor(...PDF_MUTED);
   doc.text("Monthly Financial Statement", margin, y);
   y += 22;
 
   doc.setFontSize(10);
-  doc.setTextColor(...TEXT);
+  doc.setTextColor(...PDF_BLACK);
   doc.text(`Report period: ${input.dateRangeLabel}`, margin, y);
   y += 14;
   const generatedOn = new Date().toLocaleString("en-US", {
@@ -183,13 +183,13 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
   });
   doc.text(`Generated on: ${generatedOn}`, margin, y);
   y += 14;
-  doc.setTextColor(...MUTED);
+  doc.setTextColor(...PDF_MUTED);
   doc.text(`${input.businessTypeLabel} · ${input.periodTitle}`, margin, y);
   y += 32;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.setTextColor(...EMERALD_SOFT);
+  doc.setTextColor(...PDF_ACCENT);
   doc.text("Executive summary", margin, y);
   y += 18;
 
@@ -201,20 +201,20 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     const valueRightX = margin + contentW - padX;
     const labelMaxW = contentW - padX * 2 - 110;
     const mainRows: { label: string; value: string; valueRgb: [number, number, number] }[] = [
-      { label: "Total sale", value: money(mobileExec.totalSale), valueRgb: EMERALD_SOFT },
-      { label: "Total ricariche (R.Wind + R.Voda)", value: money(mobileExec.totalRicarche), valueRgb: TEXT },
-      { label: "Total expense (Cash + Bank)", value: money(mobileExec.totalExpense), valueRgb: ROSE },
+      { label: "Total sale", value: money(mobileExec.totalSale), valueRgb: PDF_BLACK },
+      { label: "Total ricariche (R.Wind + R.Voda)", value: money(mobileExec.totalRicarche), valueRgb: PDF_BLACK },
+      { label: "Total expense (Cash + Bank)", value: money(mobileExec.totalExpense), valueRgb: PDF_BLACK },
       {
         label: "Total profit",
         value: money(mobileExec.totalProfit),
-        valueRgb: mobileExec.totalProfit >= 0 ? EMERALD_SOFT : ROSE,
+        valueRgb: mobileExec.totalProfit >= 0 ? PDF_ACCENT : PDF_NEGATIVE,
       },
     ];
     const rowH = 32;
     const blockH = 16 + mainRows.length * rowH + 14;
 
-    doc.setFillColor(...NAVY_PANEL);
-    doc.setDrawColor(40, 52, 72);
+    doc.setFillColor(...PDF_HEADER_BG);
+    doc.setDrawColor(...PDF_LINE);
     doc.setLineWidth(0.45);
     doc.roundedRect(margin, blockTop, contentW, blockH, 8, 8, "FD");
 
@@ -223,7 +223,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
       const row = mainRows[i]!;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10.5);
-      doc.setTextColor(...MUTED);
+      doc.setTextColor(...PDF_MUTED);
       doc.text(row.label, margin + padX, ry, { maxWidth: labelMaxW });
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
@@ -246,13 +246,13 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
       valueRgb: [number, number, number],
     ) => {
       const x = margin + col * (boxW + gap);
-      doc.setFillColor(...NAVY_PANEL);
-      doc.setDrawColor(30, 41, 59);
+      doc.setFillColor(...PDF_STRIPE);
+      doc.setDrawColor(...PDF_LINE);
       doc.setLineWidth(0.4);
       doc.roundedRect(x, boxTop, boxW, boxH, 6, 6, "FD");
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7.5);
-      doc.setTextColor(...MUTED);
+      doc.setTextColor(...PDF_MUTED);
       doc.text(label.toUpperCase(), x + 12, boxTop + 18);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
@@ -261,10 +261,10 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
       doc.text(lines, x + 12, boxTop + 44);
     };
 
-    drawSummaryBox(0, "Total sales", money(input.totals.sales), EMERALD_SOFT);
-    drawSummaryBox(1, "Purchases", money(input.totals.purchases), MUTED);
-    drawSummaryBox(2, "Operating expenses", money(input.totals.operatingExpenses), ROSE);
-    const profitRgb: [number, number, number] = input.totals.profit >= 0 ? EMERALD_SOFT : ROSE;
+    drawSummaryBox(0, "Total sales", money(input.totals.sales), PDF_BLACK);
+    drawSummaryBox(1, "Purchases", money(input.totals.purchases), PDF_BLACK);
+    drawSummaryBox(2, "Operating expenses", money(input.totals.operatingExpenses), PDF_BLACK);
+    const profitRgb: [number, number, number] = input.totals.profit >= 0 ? PDF_ACCENT : PDF_NEGATIVE;
     drawSummaryBox(3, profitBoxLabel, money(input.totals.profit), profitRgb);
 
     y = boxTop + boxH + 22;
@@ -273,7 +273,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
   if (!mobileClient) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(...TEXT);
+    doc.setTextColor(...PDF_BLACK);
     const marginNumerator = input.totals.profit;
     const marginDenominator = input.totals.sales;
     const marginPct =
@@ -301,7 +301,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     }
     if (y + imgH > pageH - margin - 24) {
       doc.addPage();
-      paintPageBackground(doc, pageW, pageH);
+      paintPrintPageBackground(doc, pageW, pageH);
       y = margin;
     }
     const xImg = margin + (contentW - imgW) / 2;
@@ -312,17 +312,17 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
   if (salesVsExpensesPng || profitTrendPng) {
     if (y > pageH - 220) {
       doc.addPage();
-      paintPageBackground(doc, pageW, pageH);
+      paintPrintPageBackground(doc, pageW, pageH);
       y = margin;
     }
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
-    doc.setTextColor(...EMERALD_SOFT);
+    doc.setTextColor(...PDF_ACCENT);
     doc.text("Performance visualizations", margin, y);
     y += 16;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...PDF_MUTED);
     doc.text("Charts mirror dashboard logic (Recharts → high-resolution raster).", margin, y);
     y += 18;
     if (salesVsExpensesPng) addChartImage(salesVsExpensesPng);
@@ -388,7 +388,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     const matrixMargin = mobileLedgerPdf ? 24 : margin;
     doc.addPage("a4", "l");
     const lw = doc.internal.pageSize.getWidth();
-    paintPageBackground(doc, lw, doc.internal.pageSize.getHeight());
+    paintPrintPageBackground(doc, lw, doc.internal.pageSize.getHeight());
     const firstMatrixPage = doc.getNumberOfPages();
     const tableStartY = matrixMargin + (mobileLedgerPdf ? 30 : 26);
     const colCount = matrixForPdf.columns.length;
@@ -429,50 +429,44 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
       body: bodyRows,
       foot: [footRow],
       showFoot: "lastPage",
-      theme: "plain",
+      theme: "grid",
       styles: {
+        ...printTableBaseStyles,
         fontSize: tableFont,
+        fillColor: PDF_WHITE,
         cellPadding: mobileLedgerPdf
           ? { top: 4, right: 4, bottom: 4, left: 4 }
           : { top: 5, right: 6, bottom: 5, left: 6 },
-        lineColor: [30, 41, 59],
-        lineWidth: 0,
         valign: "middle",
-        fillColor: NAVY_PANEL,
-        textColor: TEXT,
         overflow: mobileLedgerPdf ? "hidden" : "linebreak",
       },
       headStyles: {
+        ...printTableHeadStyles,
         fontStyle: "bold",
-        fillColor: EMERALD,
-        textColor: [11, 18, 32],
         fontSize: mobileLedgerPdf ? 6.5 : tableFont,
-        lineWidth: 0,
         minCellHeight: mobileLedgerPdf ? 28 : 14,
         valign: "middle",
         overflow: "visible",
       },
-      alternateRowStyles: { fillColor: NAVY_STRIPE, lineWidth: 0 },
+      alternateRowStyles: printTableAltRowStyles,
       columnStyles: colStyles,
       footStyles: {
+        ...printTableFootStyles,
         fontStyle: "bold",
-        fillColor: EMERALD_DEEP,
-        textColor: [209, 250, 229],
         fontSize: tableFont,
-        lineWidth: 0,
       },
       margin: { left: matrixMargin, right: matrixMargin, top: matrixMargin, bottom: matrixMargin },
       willDrawPage: (data) => {
         const pw = doc.internal.pageSize.getWidth();
-        paintPageBackground(doc, pw, doc.internal.pageSize.getHeight());
+        paintPrintPageBackground(doc, pw, doc.internal.pageSize.getHeight());
         if (data.pageNumber === firstMatrixPage) {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(11);
-          doc.setTextColor(...EMERALD_SOFT);
+          doc.setTextColor(...PDF_ACCENT);
           doc.text("Monthly entries", matrixMargin, matrixMargin + 10);
           doc.setFont("helvetica", "normal");
           doc.setFontSize(8.5);
-          doc.setTextColor(...MUTED);
+          doc.setTextColor(...PDF_MUTED);
           doc.text(
             matrixBlurbSingleOperatingCol
               ? "All amounts in EUR · Daily operating total (matches “Operating expenses” in the summary table). Use Daily Entry named cash/bank lines to split this into person columns."
@@ -504,7 +498,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
           if (colName && isMobileSheetProfitColumn(colName)) {
             const v = matrixForPdf.rows[data.row.index]?.amounts[colName];
             if (typeof v === "number" && v < 0) {
-              data.cell.styles.textColor = ROSE;
+              data.cell.styles.textColor = PDF_NEGATIVE;
             }
           }
         }
@@ -517,7 +511,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
           if (colName && isMobileSheetProfitColumn(colName)) {
             const t = matrixForPdf.columnTotals[data.column.index - 1];
             if (typeof t === "number" && t < 0) {
-              data.cell.styles.textColor = ROSE;
+              data.cell.styles.textColor = PDF_NEGATIVE;
             }
           }
         }
@@ -525,7 +519,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     });
   } else {
     doc.addPage();
-    paintPageBackground(doc, pageW, pageH);
+    paintPrintPageBackground(doc, pageW, pageH);
     const firstTablePage = doc.getNumberOfPages();
     const tableStartY = margin + 26;
 
@@ -554,23 +548,21 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
             ]
           : [],
       showFoot: "lastPage",
-      theme: "plain",
+      theme: "grid",
       styles: {
+        ...printTableBaseStyles,
         fontSize: 9,
+        fillColor: PDF_WHITE,
         cellPadding: { top: 8, right: 10, bottom: 8, left: 10 },
-        lineColor: [30, 41, 59],
         lineWidth: 0.25,
         valign: "middle",
-        fillColor: NAVY_PANEL,
-        textColor: TEXT,
       },
       headStyles: {
+        ...printTableHeadStyles,
         fontStyle: "bold",
-        fillColor: EMERALD,
-        textColor: [11, 18, 32],
         fontSize: 9,
       },
-      alternateRowStyles: { fillColor: NAVY_STRIPE },
+      alternateRowStyles: printTableAltRowStyles,
       columnStyles: {
         0: { halign: "left", fontStyle: "normal" },
         1: { halign: "right" },
@@ -579,23 +571,22 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
         4: { halign: "right", fontStyle: "bold" },
       },
       footStyles: {
+        ...printTableFootStyles,
         fontStyle: "bold",
-        fillColor: EMERALD_DEEP,
-        textColor: [209, 250, 229],
         fontSize: 10,
       },
       margin: { left: margin, right: margin, top: margin, bottom: margin },
       willDrawPage: (data) => {
         const pw = doc.internal.pageSize.getWidth();
-        paintPageBackground(doc, pw, doc.internal.pageSize.getHeight());
+        paintPrintPageBackground(doc, pw, doc.internal.pageSize.getHeight());
         if (data.pageNumber === firstTablePage) {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(11);
-          doc.setTextColor(...EMERALD_SOFT);
+          doc.setTextColor(...PDF_ACCENT);
           doc.text("Daily breakdown", margin, margin + 10);
           doc.setFont("helvetica", "normal");
           doc.setFontSize(8.5);
-          doc.setTextColor(...MUTED);
+          doc.setTextColor(...PDF_MUTED);
           doc.text(
             "All amounts in EUR · Matches Transactions columns (purchases vs operating). Bar charts use purchases + operating combined.",
             margin,
@@ -610,7 +601,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
         if (data.section === "body" && data.column.index === 4 && input.dailyRows.length > 0) {
           const profit = input.dailyRows[data.row.index]?.profit;
           if (typeof profit === "number" && profit < 0) {
-            data.cell.styles.textColor = ROSE;
+            data.cell.styles.textColor = PDF_NEGATIVE;
           }
         }
         if (data.section === "foot" && data.column.index === 0) {

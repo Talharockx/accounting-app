@@ -1,6 +1,16 @@
 import type { jsPDF } from "jspdf";
 
 import type { MobileTotalProfitRow } from "@/lib/dashboard/mobile-transaction-ledger";
+import {
+  PDF_ACCENT,
+  PDF_BLACK,
+  PDF_MUTED,
+  paintPrintPageBackground,
+  printTableAltRowStyles,
+  printTableBaseStyles,
+  printTableFootStyles,
+  printTableHeadStyles,
+} from "@/lib/reports/pdf-print-theme";
 import { formatCurrency } from "@/lib/utils/formatters";
 
 export type TotalProfitPdfInput = {
@@ -9,14 +19,6 @@ export type TotalProfitPdfInput = {
   rows: MobileTotalProfitRow[];
   grandTotal: MobileTotalProfitRow;
 };
-
-const NAVY: [number, number, number] = [11, 18, 32];
-const NAVY_PANEL: [number, number, number] = [17, 28, 46];
-const NAVY_STRIPE: [number, number, number] = [22, 36, 58];
-const EMERALD: [number, number, number] = [16, 185, 129];
-const EMERALD_DEEP: [number, number, number] = [6, 78, 59];
-const TEXT: [number, number, number] = [241, 245, 249];
-const MUTED: [number, number, number] = [148, 163, 184];
 
 function isoToDisplayDDMMYYYY(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -28,20 +30,15 @@ function safeFilePart(name: string): string {
   return name.trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 64) || "Business";
 }
 
-function paintPageBackground(doc: jsPDF, pageW: number, pageH: number): void {
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 0, pageW, pageH, "F");
-}
-
 function drawHeader(doc: jsPDF, input: TotalProfitPdfInput, margin: number, contentW: number): void {
   let y = margin;
-  doc.setFillColor(...EMERALD);
-  doc.rect(margin, y, contentW, 3, "F");
+  doc.setFillColor(...PDF_ACCENT);
+  doc.rect(margin, y, contentW, 2, "F");
   y += 22;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
-  doc.setTextColor(...TEXT);
+  doc.setTextColor(...PDF_BLACK);
   doc.text(input.businessName, margin, y, { maxWidth: contentW });
   y += 28;
 
@@ -51,7 +48,7 @@ function drawHeader(doc: jsPDF, input: TotalProfitPdfInput, margin: number, cont
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.setTextColor(...MUTED);
+  doc.setTextColor(...PDF_MUTED);
   doc.text(`Period: ${input.periodTitle}`, margin, y);
   y += 16;
   doc.text("Formula: Total profit = Total sale − (Cash expense + Bank expense)", margin, y);
@@ -91,11 +88,10 @@ export async function generateTotalProfitPdfBlob(input: TotalProfitPdfInput): Pr
   const contentW = pageW - margin * 2;
   const startY = tableStartAfterHeader(margin);
   const dateW = 84;
-  const amountW = 88;
   const colW = (contentW - dateW) / 5;
 
   autoTable(doc, {
-    theme: "plain",
+    theme: "grid",
     startY,
     tableWidth: contentW,
     margin: { left: margin, right: margin, top: margin, bottom: margin },
@@ -123,30 +119,10 @@ export async function generateTotalProfitPdfBlob(input: TotalProfitPdfInput): Pr
         ]
       : undefined,
     showFoot: "lastPage",
-    styles: {
-      font: "helvetica",
-      fontSize: 9,
-      cellPadding: { top: 8, right: 8, bottom: 8, left: 8 },
-      textColor: TEXT,
-      lineColor: [30, 41, 59],
-      lineWidth: 0.25,
-      valign: "middle",
-      fillColor: NAVY_PANEL,
-      overflow: "linebreak",
-    },
-    headStyles: {
-      fillColor: EMERALD,
-      textColor: NAVY,
-      fontStyle: "bold",
-      lineWidth: 0,
-    },
-    footStyles: {
-      fillColor: EMERALD_DEEP,
-      textColor: [209, 250, 229],
-      fontStyle: "bold",
-      lineWidth: 0,
-    },
-    alternateRowStyles: { fillColor: NAVY_STRIPE, lineWidth: 0 },
+    styles: { ...printTableBaseStyles, fontSize: 9 },
+    headStyles: printTableHeadStyles,
+    footStyles: printTableFootStyles,
+    alternateRowStyles: printTableAltRowStyles,
     columnStyles: {
       0: { cellWidth: dateW, halign: "left" },
       1: { cellWidth: colW, halign: "right" },
@@ -156,7 +132,7 @@ export async function generateTotalProfitPdfBlob(input: TotalProfitPdfInput): Pr
       5: { cellWidth: colW, halign: "right" },
     },
     willDrawPage: (data) => {
-      paintPageBackground(doc, pageW, pageH);
+      paintPrintPageBackground(doc, pageW, pageH);
       if (data.pageNumber === 1) {
         drawHeader(doc, input, margin, contentW);
       }
@@ -175,7 +151,7 @@ export async function generateTotalProfitPdfBlob(input: TotalProfitPdfInput): Pr
     doc.setPage(i);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...PDF_MUTED);
     doc.text(`LedgerView · Total profit · Page ${i} of ${pageCount}`, margin, pageH - 28);
   }
 

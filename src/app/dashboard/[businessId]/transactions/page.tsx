@@ -9,6 +9,7 @@ import {
   parseMobileDailyFromTransactions,
   parseNonNegative,
   sanitizeNonNegativeDecimalInput,
+  formatMoneyInputValue,
 } from "@/lib/dashboard/daily-entry";
 import {
   buildRestaurantDailyRows,
@@ -438,16 +439,16 @@ export default function TransactionsPage({
       kind: "restaurant",
       originalDate: date,
       date,
-      bank: String(d.bank_sales),
-      cash: String(d.cash_sales),
+      bank: formatMoneyInputValue(d.bank_sales),
+      cash: formatMoneyInputValue(d.cash_sales),
       companySales: hydrateCompanySaleRows(d.company_sales),
       companySpesa: hydrateSpesaCompanyRows(d.company_spesa),
       otherSpesa: d.other_spesa.length
-        ? d.other_spesa.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
+        ? d.other_spesa.map((r) => ({ itemName: r.item_name, amount: formatMoneyInputValue(r.amount) }))
         : [emptyNamed()],
-      rent: String(d.rent),
+      rent: formatMoneyInputValue(d.rent),
       personPurchases: d.person_purchases.length
-        ? d.person_purchases.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }))
+        ? d.person_purchases.map((r) => ({ itemName: r.item_name, amount: formatMoneyInputValue(r.amount) }))
         : [emptyNamed()],
       notes: d.notes ?? "",
     });
@@ -465,27 +466,27 @@ export default function TransactionsPage({
       }));
     const d = parseMobileDailyFromTransactions(dayMeta, date);
     const mapLines = (lines: { item_name: string; amount: number }[]) =>
-      lines.map((r) => ({ itemName: r.item_name, amount: String(r.amount) }));
+      lines.map((r) => ({ itemName: r.item_name, amount: formatMoneyInputValue(r.amount) }));
     const mapMerch = (sales: typeof d.mobile_sales, buys: typeof d.mobile_buys) =>
       mergeSaleBuyNamedLines(sales, buys).map((r) => ({
         itemName: r.item_name,
-        retail: String(r.retail),
-        buy: String(r.buy),
+        retail: formatMoneyInputValue(r.retail),
+        buy: formatMoneyInputValue(r.buy),
       }));
 
     setEditing({
       kind: "mobile_shop",
       originalDate: date,
       date,
-      simBuy: String(d.sim_buy),
-      simSale: String(d.sim_sale),
+      simBuy: formatMoneyInputValue(d.sim_buy),
+      simSale: formatMoneyInputValue(d.sim_sale),
       mobileMerch: mapMerch(d.mobile_sales, d.mobile_buys),
       accessoryMerch: mapMerch(d.accessory_sales, d.accessory_buys),
-      packageRWind: String(d.package_r_wind),
-      packageRVoda: String(d.package_r_voda),
+      packageRWind: formatMoneyInputValue(d.package_r_wind),
+      packageRVoda: formatMoneyInputValue(d.package_r_voda),
       repairs: mapLines(d.repairs),
       extras: mapLines(d.extras),
-      posSale: String(d.pos_sale),
+      posSale: formatMoneyInputValue(d.pos_sale),
       notes: d.notes ?? "",
       cashExpenses: mapLines(d.cash_expenses),
       bankExpenses: mapLines(d.bank_expenses),

@@ -13,11 +13,11 @@ import { NamedLinesOnly, useNamedListHelpers, type NamedListHelpers, type NamedR
 
 export type PersonSaleRowStr = { itemName: string; bank: string; cash: string };
 
-export const emptyPersonSale = (): PersonSaleRowStr => ({ itemName: "", bank: "0", cash: "0" });
+export const emptyPersonSale = (): PersonSaleRowStr => ({ itemName: "", bank: "", cash: "" });
 
 export type ChequeRowStr = { itemName: string; amount: string; dueDate: string; paid: boolean };
 
-export const emptyCheque = (): ChequeRowStr => ({ itemName: "", amount: "0", dueDate: "", paid: false });
+export const emptyCheque = (): ChequeRowStr => ({ itemName: "", amount: "", dueDate: "", paid: false });
 
 export function usePersonSaleListHelpers() {
   return useMemo(

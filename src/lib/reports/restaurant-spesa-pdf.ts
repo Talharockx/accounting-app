@@ -1,6 +1,16 @@
 import type { jsPDF } from "jspdf";
 
 import type { RestaurantSpesaLineRow } from "@/lib/reports/collect-restaurant-spesa-lines";
+import {
+  PDF_ACCENT,
+  PDF_BLACK,
+  PDF_MUTED,
+  paintPrintPageBackground,
+  printTableAltRowStyles,
+  printTableBaseStyles,
+  printTableFootStyles,
+  printTableHeadStyles,
+} from "@/lib/reports/pdf-print-theme";
 import { formatCurrency } from "@/lib/utils/formatters";
 
 export type RestaurantSpesaPdfInput = {
@@ -8,14 +18,6 @@ export type RestaurantSpesaPdfInput = {
   periodTitle: string;
   lines: RestaurantSpesaLineRow[];
 };
-
-const NAVY: [number, number, number] = [11, 18, 32];
-const NAVY_PANEL: [number, number, number] = [17, 28, 46];
-const NAVY_STRIPE: [number, number, number] = [22, 36, 58];
-const EMERALD: [number, number, number] = [16, 185, 129];
-const EMERALD_DEEP: [number, number, number] = [6, 78, 59];
-const TEXT: [number, number, number] = [241, 245, 249];
-const MUTED: [number, number, number] = [148, 163, 184];
 
 function isoToDisplayDDMMYYYY(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -25,11 +27,6 @@ function isoToDisplayDDMMYYYY(iso: string): string {
 
 function safeFilePart(name: string): string {
   return name.trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 64) || "Business";
-}
-
-function paintPageBackground(doc: jsPDF, pageW: number, pageH: number): void {
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 0, pageW, pageH, "F");
 }
 
 export async function generateRestaurantSpesaPdfBlob(input: RestaurantSpesaPdfInput): Promise<Blob> {
@@ -47,13 +44,13 @@ export async function generateRestaurantSpesaPdfBlob(input: RestaurantSpesaPdfIn
 
   const drawHeader = () => {
     let y = margin;
-    doc.setFillColor(...EMERALD);
-    doc.rect(margin, y, contentW, 3, "F");
+    doc.setFillColor(...PDF_ACCENT);
+    doc.rect(margin, y, contentW, 2, "F");
     y += 22;
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.setTextColor(...TEXT);
+    doc.setTextColor(...PDF_BLACK);
     doc.text(input.businessName, margin, y, { maxWidth: contentW });
     y += 28;
 
@@ -63,7 +60,7 @@ export async function generateRestaurantSpesaPdfBlob(input: RestaurantSpesaPdfIn
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...PDF_MUTED);
     doc.text(`Period: ${input.periodTitle}`, margin, y);
     y += 16;
     doc.text(`Generated: ${new Date().toLocaleString("en-GB")}`, margin, y);
@@ -76,7 +73,7 @@ export async function generateRestaurantSpesaPdfBlob(input: RestaurantSpesaPdfIn
   const detailW = contentW - dateW - categoryW - amountW;
 
   autoTable(doc, {
-    theme: "plain",
+    theme: "grid",
     startY,
     tableWidth: contentW,
     margin: { left: margin, right: margin, top: margin, bottom: margin },
@@ -91,30 +88,10 @@ export async function generateRestaurantSpesaPdfBlob(input: RestaurantSpesaPdfIn
       : [["—", "—", "No purchases or spesa for this period.", "—"]],
     foot: input.lines.length ? [["Total", "", "", formatCurrency(total)]] : undefined,
     showFoot: "lastPage",
-    styles: {
-      font: "helvetica",
-      fontSize: 9,
-      cellPadding: { top: 8, right: 8, bottom: 8, left: 8 },
-      textColor: TEXT,
-      lineColor: [30, 41, 59],
-      lineWidth: 0.25,
-      valign: "middle",
-      fillColor: NAVY_PANEL,
-      overflow: "linebreak",
-    },
-    headStyles: {
-      fillColor: EMERALD,
-      textColor: NAVY,
-      fontStyle: "bold",
-      lineWidth: 0,
-    },
-    alternateRowStyles: { fillColor: NAVY_STRIPE, lineWidth: 0 },
-    footStyles: {
-      fillColor: EMERALD_DEEP,
-      textColor: [209, 250, 229],
-      fontStyle: "bold",
-      lineWidth: 0,
-    },
+    styles: { ...printTableBaseStyles, fontSize: 9 },
+    headStyles: printTableHeadStyles,
+    alternateRowStyles: printTableAltRowStyles,
+    footStyles: printTableFootStyles,
     columnStyles: {
       0: { cellWidth: dateW, halign: "left" },
       1: { cellWidth: categoryW, halign: "left" },
@@ -127,7 +104,7 @@ export async function generateRestaurantSpesaPdfBlob(input: RestaurantSpesaPdfIn
       else if (data.section === "foot") data.cell.styles.halign = data.column.index === 3 ? "right" : "left";
     },
     willDrawPage: (data) => {
-      paintPageBackground(doc, pageW, pageH);
+      paintPrintPageBackground(doc, pageW, pageH);
       if (data.pageNumber === 1) drawHeader();
     },
   });
@@ -137,7 +114,7 @@ export async function generateRestaurantSpesaPdfBlob(input: RestaurantSpesaPdfIn
     doc.setPage(i);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...PDF_MUTED);
     doc.text(`LedgerView · Purchases & Spesa · Page ${i} of ${pageCount}`, margin, pageH - 28);
   }
 

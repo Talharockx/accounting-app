@@ -6,6 +6,7 @@ import {
   getMetadata,
   metaString,
   parseNonNegative,
+  formatMoneyInputValue,
   type NamedMoneyLine,
   type TransactionInsert,
   type TransactionWithMeta,
@@ -406,8 +407,8 @@ export function summarizeRestaurantDay(rows: TransactionWithMeta[], dateISO: str
 export type CompanyDropdownRowStr = { companyKey: RestaurantDeliveryKey | ""; amount: string };
 export type SpesaDropdownRowStr = { companyKey: RestaurantSpesaCompanyKey | ""; amount: string };
 
-export const emptyCompanySaleRow = (): CompanyDropdownRowStr => ({ companyKey: "", amount: "0" });
-export const emptySpesaCompanyRow = (): SpesaDropdownRowStr => ({ companyKey: "", amount: "0" });
+export const emptyCompanySaleRow = (): CompanyDropdownRowStr => ({ companyKey: "", amount: "" });
+export const emptySpesaCompanyRow = (): SpesaDropdownRowStr => ({ companyKey: "", amount: "" });
 
 export function restaurantCompanySalesFromForm(rows: CompanyDropdownRowStr[]): RestaurantCompanySaleLine[] {
   const out: RestaurantCompanySaleLine[] = [];
@@ -439,10 +440,10 @@ export function restaurantNamedLinesFromForm(
 
 export function hydrateCompanySaleRows(lines: RestaurantCompanySaleLine[]): CompanyDropdownRowStr[] {
   if (lines.length === 0) return [emptyCompanySaleRow()];
-  return lines.map((l) => ({ companyKey: l.company_key, amount: String(l.amount) }));
+  return lines.map((l) => ({ companyKey: l.company_key, amount: formatMoneyInputValue(l.amount) }));
 }
 
 export function hydrateSpesaCompanyRows(lines: RestaurantCompanySpesaLine[]): SpesaDropdownRowStr[] {
   if (lines.length === 0) return [emptySpesaCompanyRow()];
-  return lines.map((l) => ({ companyKey: l.company_key, amount: String(l.amount) }));
+  return lines.map((l) => ({ companyKey: l.company_key, amount: formatMoneyInputValue(l.amount) }));
 }

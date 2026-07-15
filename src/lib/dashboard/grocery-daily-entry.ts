@@ -2,6 +2,7 @@ import {
   getMetadata,
   metaString,
   parseNonNegative,
+  formatMoneyInputValue,
   type NamedMoneyLine,
   type TransactionInsert,
   type TransactionWithMeta,
@@ -154,7 +155,7 @@ export function resolveCompanyDropdownLabel(name: string): string {
 }
 
 export function emptyCompanyExpenseRow(): { itemName: string; amount: string } {
-  return { itemName: "", amount: "0" };
+  return { itemName: "", amount: "" };
 }
 
 export function emptyCompanyExpenseRows(): { itemName: string; amount: string }[] {
@@ -167,7 +168,7 @@ export function hydrateCompanyExpenseRows(lines: NamedMoneyLine[]): { itemName: 
     .filter((line) => line.item_name.trim() || line.amount > 0)
     .map((line) => ({
       itemName: line.item_name,
-      amount: String(line.amount),
+      amount: formatMoneyInputValue(line.amount),
     }));
   return rows.length > 0 ? rows : emptyCompanyExpenseRows();
 }
@@ -635,7 +636,7 @@ export function emptyGroceryFixedSections(): Record<
 > {
   const sections = {} as Record<GroceryFixedExpenseCategory, { itemName: string; amount: string }[]>;
   for (const key of GROCERY_ALL_FIXED_EXPENSE_CATEGORIES) {
-    sections[key] = [{ itemName: "", amount: "0" }];
+    sections[key] = [{ itemName: "", amount: "" }];
   }
   return sections;
 }
@@ -652,12 +653,12 @@ export function hydrateGroceryFixedSections(
     if (!sections[key]) sections[key] = [];
     sections[key].push({
       itemName: line.label ?? "",
-      amount: String(line.amount),
+      amount: formatMoneyInputValue(line.amount),
     });
   }
   for (const key of GROCERY_ALL_FIXED_EXPENSE_CATEGORIES) {
     if (sections[key].length === 0) {
-      sections[key] = [{ itemName: "", amount: "0" }];
+      sections[key] = [{ itemName: "", amount: "" }];
     }
   }
   return sections;

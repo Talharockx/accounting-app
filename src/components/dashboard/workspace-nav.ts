@@ -27,6 +27,7 @@ export const WORKSPACE_NAV: WorkspaceNavItem[] = [
   { label: "Bank expenses", slug: "bank-expenses", short: "Bank", mobileOnly: true },
   { label: "Purchases & Spesa", slug: "spesa", short: "Spesa", restaurantOnly: true },
   { label: "Expenses", slug: "grocery-expenses", short: "Expenses", groceryOnly: true },
+  { label: "Cheques", slug: "grocery-cheques", short: "Cheques", groceryOnly: true },
   { label: "Settings", slug: "settings", short: "More" },
 ];
 
