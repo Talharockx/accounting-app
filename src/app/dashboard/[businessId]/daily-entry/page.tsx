@@ -59,6 +59,7 @@ import {
   buildGroceryDailyRows,
   emptyCompanyExpenseRows,
   groceryBankExpenseAmount,
+  groceryCashExpenseAmount,
   groceryChequesFromForm,
   groceryNamedLinesFromForm,
   groceryPersonSalesFromForm,
@@ -125,6 +126,7 @@ export default function DailyEntryPage({
   const [companyExpenses, setCompanyExpenses] = useState<NamedRowStr[]>(emptyCompanyExpenseRows());
   const [cheques, setCheques] = useState<ChequeRowStr[]>([emptyCheque()]);
   const [groceryBankExpense, setGroceryBankExpense] = useState("0");
+  const [groceryCashExpense, setGroceryCashExpense] = useState("0");
   const [groceryNotes, setGroceryNotes] = useState("");
 
   const applyRestaurantDraftStrings = useCallback(
@@ -217,6 +219,7 @@ export default function DailyEntryPage({
         })),
       );
       setGroceryBankExpense(String(groceryBankExpenseAmount(draft.fixed_expenses)));
+      setGroceryCashExpense(String(groceryCashExpenseAmount(draft.fixed_expenses)));
       setGroceryNotes(draft.notes ?? "");
     },
     [],
@@ -379,6 +382,10 @@ export default function DailyEntryPage({
   };
   const groceryEntryHasContent = () => {
     const bankExpenseAmt = parseNonNegative(groceryBankExpense);
+    const cashExpenseAmt = parseNonNegative(groceryCashExpense);
+    const fixed_expenses: { category: "bank_expense" | "cash_expense"; amount: number }[] = [];
+    if (cashExpenseAmt > 0) fixed_expenses.push({ category: "cash_expense", amount: cashExpenseAmt });
+    if (bankExpenseAmt > 0) fixed_expenses.push({ category: "bank_expense", amount: bankExpenseAmt });
     const draft = {
       bank_sales: parseNonNegative(groceryBank),
       cash_sales: parseNonNegative(groceryCash),
@@ -387,8 +394,7 @@ export default function DailyEntryPage({
       person_expenses: [],
       kametti_expenses: [],
       cheques: groceryChequesFromForm(cheques),
-      fixed_expenses:
-        bankExpenseAmt > 0 ? [{ category: "bank_expense" as const, amount: bankExpenseAmt }] : [],
+      fixed_expenses,
       notes: groceryNotes,
     };
     const totals = groceryProfitFromTransactions(
@@ -496,6 +502,10 @@ export default function DailyEntryPage({
         }
       } else if (businessType === "grocery") {
         const bankExpenseAmt = parseNonNegative(groceryBankExpense);
+        const cashExpenseAmt = parseNonNegative(groceryCashExpense);
+        const fixed_expenses: { category: "bank_expense" | "cash_expense"; amount: number }[] = [];
+        if (cashExpenseAmt > 0) fixed_expenses.push({ category: "cash_expense", amount: cashExpenseAmt });
+        if (bankExpenseAmt > 0) fixed_expenses.push({ category: "bank_expense", amount: bankExpenseAmt });
         const rows = buildGroceryDailyRows({
           business_id: businessId,
           created_by_user_id: userId,
@@ -507,8 +517,7 @@ export default function DailyEntryPage({
           person_expenses: [],
           kametti_expenses: [],
           cheques: groceryChequesFromForm(cheques),
-          fixed_expenses:
-            bankExpenseAmt > 0 ? [{ category: "bank_expense", amount: bankExpenseAmt }] : [],
+          fixed_expenses,
           notes: groceryNotes,
         });
 
@@ -640,6 +649,17 @@ export default function DailyEntryPage({
                   rows={companyExpenses}
                   setRows={setCompanyExpenses}
                   helpers={namedListHelpers}
+                />
+
+                <MidnightField
+                  id="grocery-cash-expense"
+                  label="Cash expense"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={groceryCashExpense}
+                  onChange={(e) => clampInput(e.target.value, setGroceryCashExpense)}
                 />
 
                 <MidnightField

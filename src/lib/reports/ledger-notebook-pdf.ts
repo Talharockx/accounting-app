@@ -5,6 +5,7 @@ import { formatLedgerMoney, formatMoneyOrBlank } from "@/lib/dashboard/ledger-no
 
 export type LedgerNotebookPdfInput = {
   businessName: string;
+  khataName: string;
   periodTitle: string;
   openingBalance: number;
   rows: LedgerNotebookRowWithBalance[];
@@ -70,7 +71,7 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
     y += 22;
 
     doc.setFontSize(13);
-    doc.text("Notebook", margin, y);
+    doc.text(`Notebook — ${input.khataName}`, margin, y);
     y += 18;
 
     doc.setFont("helvetica", "normal");
@@ -133,7 +134,7 @@ export async function downloadLedgerNotebookPdf(input: LedgerNotebookPdfInput): 
   const blob = await generateLedgerNotebookPdfBlob(input);
   const url = URL.createObjectURL(blob);
   const monthFileTag = input.periodTitle.replace(/\s+/g, "_");
-  const filename = `${safeFilePart(input.businessName)}_notebook_${monthFileTag}.pdf`;
+  const filename = `${safeFilePart(input.businessName)}_notebook_${safeFilePart(input.khataName)}_${monthFileTag}.pdf`;
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

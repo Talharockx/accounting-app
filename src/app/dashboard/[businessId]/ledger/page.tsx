@@ -8,16 +8,21 @@ import { PressableButton } from "@/components/ui/pressable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { sanitizeNonNegativeDecimalInput } from "@/lib/dashboard/daily-entry";
 import {
+  buildLedgerKhataInsert,
   buildLedgerRowInsert,
+  closingBalanceForRows,
+  collectLedgerKhatas,
   collectLedgerRows,
   DESC_LEDGER_NOTEBOOK,
   formatLedgerMoney,
   formatMoneyOrBlank,
   ledgerRowMetadataPatch,
+  newLedgerKhataId,
   openingBalanceBefore,
   parseLedgerMoneyInput,
   rowsInRange,
   withRunningBalances,
+  type LedgerKhata,
   type LedgerNotebookRow,
   type LedgerNotebookRowWithBalance,
 } from "@/lib/dashboard/ledger-notebook";
@@ -64,6 +69,9 @@ export default function LedgerNotebookPage({
   const [error, setError] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
 
+  const [khatas, setKhatas] = useState<LedgerKhata[]>([]);
+  const [selectedKhataId, setSelectedKhataId] = useState<string | null>(null);
+  const [newKhataName, setNewKhataName] = useState("");
   const [allRows, setAllRows] = useState<LedgerNotebookRow[]>([]);
 
   const [monthInput, setMonthInput] = useState(() =>
@@ -99,7 +107,7 @@ export default function LedgerNotebookPage({
             const { data: authData } = await supabase.auth.getUser();
             uid = authData.user?.id ?? "";
           } catch {
-            // Offline / Auth unreachable — page still usable for viewing.
+            /* ignore */
           }
         }
         if (!cancelled && uid) setUserId(uid);
@@ -121,53 +129,73 @@ export default function LedgerNotebookPage({
     return getMonthBoundariesISO(parsedMonth.year, parsedMonth.monthIndex);
   }, [parsedMonth]);
 
-  const loadLedger = useCallback(async () => {
-    if (!businessId || !monthRange) return;
+  const selectedKhata = useMemo(
+    () => khatas.find((k) => k.id === selectedKhataId) ?? null,
+    [khatas, selectedKhataId],
+  );
+
+  const loadNotebook = useCallback(async () => {
+    if (!businessId) return;
     setLoading(true);
     setError("");
-    const notesOr = `description.like.${DESC_LEDGER_NOTEBOOK}%`;
+    const notesOr = `description.like.Ledger Notebook%`;
     try {
+      const endCap = monthRange?.end ?? getTodayLocalISO();
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>
           await supabase
             .from("transactions")
             .select("id, business_id, amount, transaction_type, description, transaction_date, metadata")
             .eq("business_id", businessId)
-            .lte("transaction_date", monthRange.end)
+            .lte("transaction_date", endCap)
             .or(notesOr)
             .order("transaction_date", { ascending: true })
-            .limit(4000),
+            .limit(5000),
         async () =>
           await supabase
             .from("transactions")
             .select("id, business_id, amount, transaction_type, description, transaction_date")
             .eq("business_id", businessId)
-            .lte("transaction_date", monthRange.end)
+            .lte("transaction_date", endCap)
             .or(notesOr)
             .order("transaction_date", { ascending: true })
-            .limit(4000),
+            .limit(5000),
       );
 
       if (fetchError) {
         setError(getUserFriendlyError(new Error(fetchError.message)));
+        setKhatas([]);
         setAllRows([]);
         return;
       }
 
-      setAllRows(collectLedgerRows(mapTransactionListRows(data ?? [])));
+      const mapped = mapTransactionListRows(data ?? []);
+      const nextKhatas = collectLedgerKhatas(mapped);
+      setKhatas(nextKhatas);
+
+      if (selectedKhataId) {
+        setAllRows(collectLedgerRows(mapped, selectedKhataId));
+        if (!nextKhatas.some((k) => k.id === selectedKhataId)) {
+          setSelectedKhataId(null);
+          setAllRows([]);
+        }
+      } else {
+        setAllRows([]);
+      }
     } catch (caught) {
       setError(getUserFriendlyError(caught, SYSTEM_UNAVAILABLE));
+      setKhatas([]);
       setAllRows([]);
     } finally {
       setLoading(false);
     }
-  }, [businessId, monthRange]);
+  }, [businessId, monthRange, selectedKhataId]);
 
   useEffect(() => {
-    if (!businessId || !monthRange) return;
-    const id = window.setTimeout(() => void loadLedger(), 0);
+    if (!businessId) return;
+    const id = window.setTimeout(() => void loadNotebook(), 0);
     return () => window.clearTimeout(id);
-  }, [businessId, monthRange, loadLedger]);
+  }, [businessId, loadNotebook]);
 
   const opening = useMemo(
     () => (monthRange ? openingBalanceBefore(allRows, monthRange.start) : 0),
@@ -175,9 +203,49 @@ export default function LedgerNotebookPage({
   );
 
   const monthRows = useMemo((): LedgerNotebookRowWithBalance[] => {
-    if (!monthRange) return [];
+    if (!monthRange || !selectedKhataId) return [];
     return withRunningBalances(rowsInRange(allRows, monthRange.start, monthRange.end), opening);
-  }, [allRows, monthRange, opening]);
+  }, [allRows, monthRange, opening, selectedKhataId]);
+
+  // Refresh balances for list cards when listing.
+  const [listBalances, setListBalances] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (selectedKhataId || !businessId) {
+      setListBalances({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const notesOr = `description.like.Ledger Notebook%`;
+      const { data } = await selectWithMetadataColumnFallback(
+        async () =>
+          await supabase
+            .from("transactions")
+            .select("id, business_id, amount, transaction_type, description, transaction_date, metadata")
+            .eq("business_id", businessId)
+            .or(notesOr)
+            .limit(5000),
+        async () =>
+          await supabase
+            .from("transactions")
+            .select("id, business_id, amount, transaction_type, description, transaction_date")
+            .eq("business_id", businessId)
+            .or(notesOr)
+            .limit(5000),
+      );
+      if (cancelled || !data) return;
+      const mapped = mapTransactionListRows(data);
+      const next: Record<string, number> = {};
+      for (const k of collectLedgerKhatas(mapped)) {
+        next[k.id] = closingBalanceForRows(collectLedgerRows(mapped, k.id));
+      }
+      if (!cancelled) setListBalances(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [businessId, selectedKhataId, khatas.length]);
 
   const periodTitle = parsedMonth
     ? calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)
@@ -193,6 +261,110 @@ export default function LedgerNotebookPage({
     setRowDetails("");
   };
 
+  const openKhata = (id: string) => {
+    resetForm();
+    setSelectedKhataId(id);
+  };
+
+  const backToKhatas = () => {
+    resetForm();
+    setSelectedKhataId(null);
+    setAllRows([]);
+  };
+
+  const handleCreateKhata = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!businessId || !userId) {
+      toast.error("Sign in again to create a khata.");
+      return;
+    }
+    const name = newKhataName.trim();
+    if (!name) {
+      toast.error("Enter a khata name.");
+      return;
+    }
+    if (khatas.some((k) => k.name.toLowerCase() === name.toLowerCase())) {
+      toast.error("A khata with that name already exists.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const khataId = newLedgerKhataId();
+      const row = buildLedgerKhataInsert({
+        business_id: businessId,
+        created_by_user_id: userId,
+        khata_id: khataId,
+        name,
+      });
+      const { error: insertError } = await insertTransactionsWithMetadataFallback(supabase, [row]);
+      if (insertError) throw insertError;
+      setNewKhataName("");
+      toast.success(`Khata “${name}” created.`);
+      setSelectedKhataId(khataId);
+    } catch (caught) {
+      toast.error(getUserFriendlyError(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteKhata = async (khata: LedgerKhata) => {
+    if (!businessId) return;
+    if (
+      !window.confirm(
+        `Delete khata “${khata.name}” and all its Notebook rows? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    try {
+      // Delete data rows for this khata (client-side filter then delete by ids).
+      const notesOr = `description.like.Ledger Notebook%`;
+      const { data } = await selectWithMetadataColumnFallback(
+        async () =>
+          await supabase
+            .from("transactions")
+            .select("id, business_id, amount, transaction_type, description, transaction_date, metadata")
+            .eq("business_id", businessId)
+            .or(notesOr)
+            .limit(5000),
+        async () =>
+          await supabase
+            .from("transactions")
+            .select("id, business_id, amount, transaction_type, description, transaction_date")
+            .eq("business_id", businessId)
+            .or(notesOr)
+            .limit(5000),
+      );
+      const mapped = mapTransactionListRows(data ?? []);
+      const rowIds = collectLedgerRows(mapped, khata.id)
+        .map((r) => r.id)
+        .filter(Boolean);
+      const registryId = khata.registryId || collectLedgerKhatas(mapped).find((k) => k.id === khata.id)?.registryId;
+      const ids = [...rowIds];
+      if (registryId) ids.push(registryId);
+
+      if (ids.length) {
+        const { error: deleteError } = await supabase
+          .from("transactions")
+          .delete()
+          .eq("business_id", businessId)
+          .in("id", ids);
+        if (deleteError) throw new Error(deleteError.message);
+      }
+
+      toast.success(`Khata “${khata.name}” deleted.`);
+      if (selectedKhataId === khata.id) backToKhatas();
+      await loadNotebook();
+    } catch (caught) {
+      toast.error(getUserFriendlyError(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const startEdit = (row: LedgerNotebookRowWithBalance) => {
     setEditingId(row.id);
     setRowDate(row.date);
@@ -203,7 +375,7 @@ export default function LedgerNotebookPage({
 
   const handleSubmitRow = async (event: FormEvent) => {
     event.preventDefault();
-    if (!businessId || !userId) {
+    if (!businessId || !userId || !selectedKhataId) {
       toast.error("Sign in again to save Notebook rows.");
       return;
     }
@@ -230,7 +402,13 @@ export default function LedgerNotebookPage({
             description: details
               ? `${DESC_LEDGER_NOTEBOOK}: ${details.slice(0, 80)}`
               : DESC_LEDGER_NOTEBOOK,
-            metadata: ledgerRowMetadataPatch({ amount, paid, details, sortIndex }),
+            metadata: ledgerRowMetadataPatch({
+              khata_id: selectedKhataId,
+              amount,
+              paid,
+              details,
+              sortIndex,
+            }),
           } as never)
           .eq("id", editingId)
           .eq("business_id", businessId);
@@ -240,13 +418,16 @@ export default function LedgerNotebookPage({
         const insert = buildLedgerRowInsert({
           business_id: businessId,
           created_by_user_id: userId,
+          khata_id: selectedKhataId,
           date: rowDate,
           amount,
           paid,
           details,
           sortIndex,
         });
-        const { error: insertError } = await insertTransactionsWithMetadataFallback(supabase, [insert]);
+        const { error: insertError } = await insertTransactionsWithMetadataFallback(supabase, [
+          insert,
+        ]);
         if (insertError) throw insertError;
         toast.success("Notebook row saved.");
       }
@@ -259,10 +440,10 @@ export default function LedgerNotebookPage({
         if (nextMonth !== monthInput) {
           setMonthInput(nextMonth);
         } else {
-          await loadLedger();
+          await loadNotebook();
         }
       } else {
-        await loadLedger();
+        await loadNotebook();
       }
     } catch (caught) {
       toast.error(getUserFriendlyError(caught));
@@ -271,7 +452,7 @@ export default function LedgerNotebookPage({
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteRow = async (id: string) => {
     if (!businessId || !id) return;
     if (!window.confirm("Delete this Notebook row?")) return;
     try {
@@ -283,18 +464,19 @@ export default function LedgerNotebookPage({
       if (deleteError) throw new Error(deleteError.message);
       toast.success("Notebook row deleted.");
       if (editingId === id) resetForm();
-      await loadLedger();
+      await loadNotebook();
     } catch (caught) {
       toast.error(getUserFriendlyError(caught));
     }
   };
 
   const handleDownloadPdf = async () => {
-    if (!businessName || !periodTitle) return;
+    if (!businessName || !periodTitle || !selectedKhata) return;
     setPdfBusy(true);
     try {
       await downloadLedgerNotebookPdf({
         businessName,
+        khataName: selectedKhata.name,
         periodTitle,
         openingBalance: opening,
         rows: monthRows,
@@ -316,6 +498,106 @@ export default function LedgerNotebookPage({
     );
   }
 
+  // —— Khata picker ——
+  if (!selectedKhataId) {
+    return (
+      <section className="space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel rounded-[1.625rem] p-6 sm:p-7"
+        >
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
+            Workspace
+          </p>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
+            Notebook
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-[var(--lv-muted-strong)]">
+            Create a khata for each person or account (xyz, abc, …). Each khata has its own Date,
+            Amount, Paid, Balance, and Details ledger.
+          </p>
+        </motion.div>
+
+        <form
+          onSubmit={(e) => void handleCreateKhata(e)}
+          className="glass-panel space-y-4 rounded-[1.625rem] p-6 sm:p-7"
+        >
+          <h2 className="text-lg font-semibold text-[var(--lv-heading)]">New khata</h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <MidnightField
+                id="khata-name"
+                label="Name"
+                type="text"
+                value={newKhataName}
+                onChange={(e) => setNewKhataName(e.target.value)}
+                maxLength={80}
+              />
+            </div>
+            <PressableButton type="submit" variant="primary" disabled={saving} className="min-h-12 px-5">
+              {saving ? "Saving…" : "Add khata"}
+            </PressableButton>
+          </div>
+        </form>
+
+        <div className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
+          <h2 className="mb-4 text-lg font-semibold text-[var(--lv-heading)]">Khatas</h2>
+          {error ? (
+            <p className="text-sm font-medium text-[var(--lv-traffic-critical)]" role="alert">
+              {error}
+            </p>
+          ) : loading ? (
+            <Skeleton className="h-32 w-full rounded-xl" />
+          ) : khatas.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] px-6 py-12 text-center">
+              <p className="font-semibold text-[var(--lv-heading)]">No khatas yet</p>
+              <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
+                Add a name above to open the first ledger.
+              </p>
+            </div>
+          ) : (
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {khatas.map((khata) => (
+                <li
+                  key={khata.id}
+                  className="flex flex-col gap-3 rounded-2xl border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_50%,transparent)] p-4"
+                >
+                  <div>
+                    <p className="text-lg font-semibold text-[var(--lv-heading)]">{khata.name}</p>
+                    <p className="mt-1 lv-tabular-mono text-sm text-[var(--lv-muted-strong)]">
+                      Balance {formatLedgerMoney(listBalances[khata.id] ?? 0)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <PressableButton
+                      type="button"
+                      variant="primary"
+                      className="min-h-10 px-4 text-sm"
+                      onClick={() => openKhata(khata.id)}
+                    >
+                      Open
+                    </PressableButton>
+                    <PressableButton
+                      type="button"
+                      variant="ghost"
+                      disabled={saving}
+                      className="min-h-10 px-4 text-sm text-[var(--lv-traffic-critical)]"
+                      onClick={() => void handleDeleteKhata(khata)}
+                    >
+                      Delete
+                    </PressableButton>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  // —— Single khata ledger (previous Notebook UI) ——
   return (
     <section className="space-y-6">
       <motion.div
@@ -325,15 +607,22 @@ export default function LedgerNotebookPage({
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
+            <PressableButton
+              type="button"
+              variant="ghost"
+              className="mb-2 min-h-9 px-0 text-sm text-[var(--lv-muted-strong)]"
+              onClick={backToKhatas}
+            >
+              ← All khatas
+            </PressableButton>
             <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--lv-muted-strong)]">
-              Workspace
+              Khata
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--lv-heading)] sm:text-3xl">
-              Notebook
+              {selectedKhata?.name ?? "Notebook"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--lv-muted-strong)]">
-              Date, Amount, Paid, Balance, and Details — running balance carries forward. Separate
-              from Daily Entry, Notes, and Notes +.
+              Date, Amount, Paid, Balance, Details — balance = previous + Amount − Paid.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">
@@ -415,7 +704,9 @@ export default function LedgerNotebookPage({
       <div className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-[var(--lv-heading)]">{periodTitle || "Notebook"}</h2>
+            <h2 className="text-lg font-semibold text-[var(--lv-heading)]">
+              {periodTitle || "Notebook"}
+            </h2>
           </div>
           <PressableButton
             type="button"
@@ -454,7 +745,7 @@ export default function LedgerNotebookPage({
                 {monthRows.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-[var(--lv-muted-strong)]">
-                      No rows this month. Add one above — balance carries forward from earlier months.
+                      No rows this month for this khata. Add one above.
                     </td>
                   </tr>
                 ) : (
@@ -501,7 +792,7 @@ export default function LedgerNotebookPage({
                             variant="ghost"
                             className="min-h-9 px-3 text-xs text-[var(--lv-traffic-critical)]"
                             disabled={!row.id}
-                            onClick={() => void handleDelete(row.id)}
+                            onClick={() => void handleDeleteRow(row.id)}
                           >
                             Delete
                           </PressableButton>

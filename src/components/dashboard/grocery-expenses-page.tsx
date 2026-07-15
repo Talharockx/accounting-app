@@ -204,7 +204,8 @@ export function GroceryExpensesPage({
               Expenses
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--lv-muted-strong)]">
-              Month view of grocery expenses — company expense lines, bank expense, and cheques. Download as PDF.
+              Month view of grocery expenses — company expense lines, cash/bank expense, and cheques.
+              Download as PDF.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">
@@ -256,7 +257,7 @@ export function GroceryExpensesPage({
         <div className="glass-panel rounded-[1.625rem] border border-dashed border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] px-6 py-14 text-center">
           <p className="text-lg font-semibold text-[var(--lv-heading)]">No expenses this month</p>
           <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-            Add company expenses, bank expense, or cheques in Daily Entry.
+            Add company expenses, cash expense, bank expense, or cheques in Daily Entry.
           </p>
         </div>
       ) : (

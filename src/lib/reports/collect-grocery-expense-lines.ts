@@ -78,9 +78,11 @@ export function collectGroceryExpensesForRange(
       const catLabel =
         category === "pos_expense" || category === "bank_expense"
           ? "Bank expense"
-          : category
-            ? fixedLabel(category)
-            : "Fixed expense";
+          : category === "cash_expense"
+            ? "Cash expense"
+            : category
+              ? fixedLabel(category)
+              : "Fixed expense";
       const label = typeof m["label"] === "string" ? m["label"] : "";
       pushRow(out, date, catLabel, trimName(label) || catLabel, amt);
     }

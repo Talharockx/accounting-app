@@ -29,6 +29,7 @@ export type GroceryFixedExpenseCategory =
   | "pos_expense"
   /** Prefer this over legacy `pos_expense`. */
   | "bank_expense"
+  | "cash_expense"
   | "salary"
   | "extra"
   | "vodafone";
@@ -39,6 +40,7 @@ export const GROCERY_FIXED_EXPENSE_CATEGORIES: {
   label: string;
   hint: string;
 }[] = [
+  { key: "cash_expense", label: "Cash expense", hint: "Cash payment expense for the day." },
   { key: "bank_expense", label: "Bank expense", hint: "Bank / card payment expense for the day." },
 ];
 
@@ -49,6 +51,7 @@ export const GROCERY_ALL_FIXED_EXPENSE_CATEGORIES: GroceryFixedExpenseCategory[]
   "accountant",
   "pos_expense",
   "bank_expense",
+  "cash_expense",
   "salary",
   "extra",
   "vodafone",
@@ -110,8 +113,10 @@ export type GroceryDayTotals = {
   kametti: number;
   vodafone: number;
   spesaPos: number;
+  /** Cash expense fixed line. */
+  cashExpense: number;
   extra: number;
-  /** Company + person expenses + cheques + fixed operating costs + Kametti + Vodafone + POS + extra. */
+  /** Company + person expenses + cheques + fixed operating costs + Kametti + Vodafone + POS + cash + extra. */
   spesaTotal: number;
   /** totalSale − spesaTotal */
   totalProfit: number;
@@ -186,6 +191,7 @@ function emptyGroceryDayTotals(): GroceryDayTotals {
     kametti: 0,
     vodafone: 0,
     spesaPos: 0,
+    cashExpense: 0,
     extra: 0,
     spesaTotal: 0,
     totalProfit: 0,
@@ -223,6 +229,7 @@ function descCheque(name: string, index: number) {
 
 function fixedCategoryLabel(category: GroceryFixedExpenseCategory): string {
   if (category === "pos_expense" || category === "bank_expense") return "Bank expense";
+  if (category === "cash_expense") return "Cash expense";
   return GROCERY_FIXED_EXPENSE_CATEGORIES.find((c) => c.key === category)?.label ?? category;
 }
 
@@ -515,6 +522,7 @@ export function groceryProfitFromTransactions(rows: TransactionWithMeta[]): Groc
       else if (category === "accountant") totals.commercialista += amt;
       else if (category === "salary") totals.stipendio += amt;
       else if (category === "pos_expense" || category === "bank_expense") totals.spesaPos += amt;
+      else if (category === "cash_expense") totals.cashExpense += amt;
       else if (category === "vodafone") totals.vodafone += amt;
       else if (category === "extra") totals.extra += amt;
     }
@@ -532,6 +540,7 @@ export function groceryProfitFromTransactions(rows: TransactionWithMeta[]): Groc
     totals.kametti +
     totals.vodafone +
     totals.spesaPos +
+    totals.cashExpense +
     totals.extra;
 
   // Legacy display: older days stored person expenses before Kametti had its own section.
@@ -658,6 +667,16 @@ export function hydrateGroceryFixedSections(
 export function groceryBankExpenseAmount(fixed: GroceryFixedExpenseLine[]): number {
   return fixed.reduce((sum, line) => {
     if (line.category === "bank_expense" || line.category === "pos_expense") {
+      return sum + Math.max(0, line.amount);
+    }
+    return sum;
+  }, 0);
+}
+
+/** Sum cash expense fixed lines for the Daily Entry “Cash expense” field. */
+export function groceryCashExpenseAmount(fixed: GroceryFixedExpenseLine[]): number {
+  return fixed.reduce((sum, line) => {
+    if (line.category === "cash_expense") {
       return sum + Math.max(0, line.amount);
     }
     return sum;
