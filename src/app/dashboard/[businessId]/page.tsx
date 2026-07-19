@@ -367,6 +367,16 @@ export default function BusinessOverviewPage({
           <MetricMini label="Total sale" value={formatCurrency(groceryTotals.totalSale)} className="lg:col-span-2" />
           <MetricMini label="Spesa total" value={formatCurrency(groceryTotals.spesaTotal)} className="lg:col-span-2" />
           <MetricMini label="Cheques total" value={formatCurrency(groceryTotals.cheques)} />
+          <MetricMini
+            label="Cash sale − Cash expense"
+            value={formatCurrency(groceryTotals.cashSaleTotal - groceryTotals.cashExpense)}
+            profitTone={toneProfitNumeric(groceryTotals.cashSaleTotal - groceryTotals.cashExpense)}
+          />
+          <MetricMini
+            label="Bank sale − Bank expense"
+            value={formatCurrency(groceryTotals.bankSaleTotal - groceryTotals.spesaPos)}
+            profitTone={toneProfitNumeric(groceryTotals.bankSaleTotal - groceryTotals.spesaPos)}
+          />
         </div>
       ) : isRestaurant ? (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:auto-rows-min">
@@ -400,6 +410,16 @@ export default function BusinessOverviewPage({
           />
           <MetricMini label="Total sale" value={formatCurrency(restaurantTotals.totalSale)} />
           <MetricMini label="Total spesa" value={formatCurrency(restaurantTotals.totalSpesa)} className="lg:col-span-2" />
+          <MetricMini
+            label="Cash sale − Cash expense"
+            value={formatCurrency(restaurantTotals.cashSaleTotal - restaurantTotals.cashExpenses)}
+            profitTone={toneProfitNumeric(restaurantTotals.cashSaleTotal - restaurantTotals.cashExpenses)}
+          />
+          <MetricMini
+            label="Bank sale − Bank expense"
+            value={formatCurrency(restaurantTotals.bankSaleTotal - restaurantTotals.bankExpenses)}
+            profitTone={toneProfitNumeric(restaurantTotals.bankSaleTotal - restaurantTotals.bankExpenses)}
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -435,6 +455,17 @@ export default function BusinessOverviewPage({
             <MetricMini label="Total recharges" value={formatCurrency(mobileTotals.supplierRicarche)} />
             <MetricMini label="Total expense" value={formatCurrency(mobileTotals.cashExpenses)} />
             <MetricMini label="Bank expenses" value={formatCurrency(mobileTotals.bankExpenses)} />
+
+            <MetricMini
+              label="Cash sale − Cash expense"
+              value={formatCurrency(mobileSummary.remainingCashSale)}
+              profitTone={toneProfitNumeric(mobileSummary.remainingCashSale)}
+            />
+            <MetricMini
+              label="Bank sale − Bank expense"
+              value={formatCurrency(mobileSummary.remainingBankSale)}
+              profitTone={toneProfitNumeric(mobileSummary.remainingBankSale)}
+            />
 
             <MetricMini
               label="Sim profit"
