@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   buildMobileDailyRows,
@@ -24,6 +24,7 @@ import {
   restaurantCompanySpesaFromForm,
   restaurantDayHasContent,
   restaurantNamedLinesFromForm,
+  restaurantProfitFromTransactions,
 } from "@/lib/dashboard/restaurant-daily-entry";
 import {
   insertTransactionsWithMetadataFallback,
@@ -31,6 +32,8 @@ import {
 } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { getTodayLocalISO } from "@/lib/utils/date-range";
+import { formatCurrency } from "@/lib/utils/formatters";
+import { cn } from "@/lib/utils/cn";
 import { supabase } from "@/lib/supabaseClient";
 import {
   MerchNamedBlock,
@@ -68,6 +71,7 @@ import {
   hydrateCompanyExpenseRows,
   parseGroceryDailyFromTransactions,
 } from "@/lib/dashboard/grocery-daily-entry";
+import { buildMobileTransactionLedgerRow } from "@/lib/dashboard/mobile-transaction-ledger";
 import {
   RestaurantDailyEntryFields,
   useCompanySaleListHelpers,
@@ -139,6 +143,22 @@ export default function DailyEntryPage({
       setRestOtherSpesa(
         draft.other_spesa.length
           ? draft.other_spesa.map((r) => ({
+              itemName: r.item_name,
+              amount: formatMoneyInputValue(r.amount),
+            }))
+          : [emptyNamed()],
+      );
+      setCashExpenses(
+        draft.cash_expenses.length
+          ? draft.cash_expenses.map((r) => ({
+              itemName: r.item_name,
+              amount: formatMoneyInputValue(r.amount),
+            }))
+          : [emptyNamed()],
+      );
+      setBankExpenses(
+        draft.bank_expenses.length
+          ? draft.bank_expenses.map((r) => ({
               itemName: r.item_name,
               amount: formatMoneyInputValue(r.amount),
             }))
@@ -359,6 +379,150 @@ export default function DailyEntryPage({
   const companySaleHelpers = useCompanySaleListHelpers();
   const spesaCompanyHelpers = useSpesaCompanyListHelpers();
 
+  const previewMetaRows = (rows: ReturnType<typeof buildRestaurantDailyRows>) =>
+    rows.map((row) => ({
+      amount: row.amount,
+      transaction_type: row.transaction_type,
+      description: row.description,
+      transaction_date: row.transaction_date,
+      metadata: row.metadata,
+    }));
+
+  /** Live last balance for the selected entry date from current form values. */
+  const dayLastBalance = useMemo(() => {
+    const bid = businessId || "preview";
+    const uid = userId || "preview";
+
+    if (businessType === "grocery") {
+      const bankExpenseAmt = parseNonNegative(groceryBankExpense);
+      const cashExpenseAmt = parseNonNegative(groceryCashExpense);
+      const fixed_expenses: { category: "bank_expense" | "cash_expense"; amount: number }[] = [];
+      if (cashExpenseAmt > 0) fixed_expenses.push({ category: "cash_expense", amount: cashExpenseAmt });
+      if (bankExpenseAmt > 0) fixed_expenses.push({ category: "bank_expense", amount: bankExpenseAmt });
+      const t = groceryProfitFromTransactions(
+        previewMetaRows(
+          buildGroceryDailyRows({
+            business_id: bid,
+            created_by_user_id: uid,
+            transaction_date: entryDate,
+            bank_sales: parseNonNegative(groceryBank),
+            cash_sales: parseNonNegative(groceryCash),
+            person_sales: groceryPersonSalesFromForm(personSales),
+            company_expenses: groceryNamedLinesFromForm(companyExpenses),
+            person_expenses: [],
+            kametti_expenses: [],
+            cheques: groceryChequesFromForm(cheques),
+            fixed_expenses,
+            notes: groceryNotes,
+          }),
+        ),
+      );
+      return {
+        totalSale: t.totalSale,
+        totalExpense: t.spesaTotal,
+        lastBalance: t.totalSale - t.spesaTotal,
+      };
+    }
+
+    if (businessType === "restaurant") {
+      const t = restaurantProfitFromTransactions(
+        previewMetaRows(
+          buildRestaurantDailyRows({
+            business_id: bid,
+            created_by_user_id: uid,
+            transaction_date: entryDate,
+            bank_sales: parseNonNegative(restBank),
+            cash_sales: parseNonNegative(restCash),
+            company_sales: restaurantCompanySalesFromForm(restCompanySales),
+            company_spesa: restaurantCompanySpesaFromForm(restCompanySpesa),
+            other_spesa: restaurantNamedLinesFromForm(restOtherSpesa),
+            rent: 0,
+            person_purchases: [],
+            cash_expenses: restaurantNamedLinesFromForm(cashExpenses),
+            bank_expenses: restaurantNamedLinesFromForm(bankExpenses),
+            notes: restNotes,
+          }),
+        ),
+      );
+      return {
+        totalSale: t.totalSale,
+        totalExpense: t.totalSpesa,
+        lastBalance: t.totalSale - t.totalSpesa,
+      };
+    }
+
+    const toLines = (list: NamedRowStr[]) =>
+      list
+        .map((r) => ({
+          item_name: r.itemName,
+          amount: parseNonNegative(r.amount),
+        }))
+        .filter((r) => r.amount > 0);
+    const { sales: mobile_sales, buys: mobile_buys } = merchFormStringsToSaleBuy(mobileMerch);
+    const { sales: accessory_sales, buys: accessory_buys } = merchFormStringsToSaleBuy(accessoryMerch);
+    const ledger = buildMobileTransactionLedgerRow(
+      previewMetaRows(
+        buildMobileDailyRows({
+          business_id: bid,
+          created_by_user_id: uid,
+          transaction_date: entryDate,
+          sim_buy: parseNonNegative(simBuy),
+          sim_sale: parseNonNegative(simSale),
+          mobile_sales,
+          mobile_buys,
+          accessory_sales,
+          accessory_buys,
+          package_r_wind: parseNonNegative(packageRWind),
+          package_r_voda: parseNonNegative(packageRVoda),
+          repairs: toLines(repairs),
+          extras: toLines(extras),
+          pos_sale: parseNonNegative(posSale),
+          notes: mobileNotes,
+          cash_expenses: toLines(cashExpenses),
+          bank_expenses: toLines(bankExpenses),
+        }),
+      ),
+      entryDate,
+    );
+    const totalExpense = ledger.cashExpense + ledger.bankExpense;
+    return {
+      totalSale: ledger.totalSale,
+      totalExpense,
+      lastBalance: ledger.totalSale - totalExpense,
+    };
+  }, [
+    businessId,
+    userId,
+    businessType,
+    entryDate,
+    groceryBank,
+    groceryCash,
+    groceryBankExpense,
+    groceryCashExpense,
+    personSales,
+    companyExpenses,
+    cheques,
+    groceryNotes,
+    restBank,
+    restCash,
+    restCompanySales,
+    restCompanySpesa,
+    restOtherSpesa,
+    restNotes,
+    cashExpenses,
+    bankExpenses,
+    simBuy,
+    simSale,
+    mobileMerch,
+    accessoryMerch,
+    packageRWind,
+    packageRVoda,
+    repairs,
+    extras,
+    posSale,
+    mobileNotes,
+  ]);
+
   const restaurantEntryHasContent = () => {
     const draft = {
       bank_sales: parseNonNegative(restBank),
@@ -368,6 +532,8 @@ export default function DailyEntryPage({
       other_spesa: restaurantNamedLinesFromForm(restOtherSpesa),
       rent: 0,
       person_purchases: [],
+      cash_expenses: restaurantNamedLinesFromForm(cashExpenses),
+      bank_expenses: restaurantNamedLinesFromForm(bankExpenses),
       notes: restNotes,
     };
     const previewRows = buildRestaurantDailyRows({
@@ -497,6 +663,8 @@ export default function DailyEntryPage({
           other_spesa: restaurantNamedLinesFromForm(restOtherSpesa),
           rent: 0,
           person_purchases: [],
+          cash_expenses: restaurantNamedLinesFromForm(cashExpenses),
+          bank_expenses: restaurantNamedLinesFromForm(bankExpenses),
           notes: restNotes,
         });
 
@@ -610,6 +778,42 @@ export default function DailyEntryPage({
               required
             />
 
+            <div className="rounded-2xl border border-[color-mix(in_srgb,var(--lv-accent)_28%,transparent)] bg-[color-mix(in_srgb,var(--lv-accent)_8%,transparent)] px-4 py-4 sm:px-5">
+              <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[var(--lv-muted-strong)]">
+                Last balance · this date
+              </p>
+              <p className="mt-1 text-xs text-[var(--lv-muted-strong)]">
+                Total sale − total expense for {entryDate}
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs font-medium text-[var(--lv-muted-strong)]">Total sale</p>
+                  <p className="lv-tabular-mono mt-1 text-base font-semibold text-[var(--lv-heading)]">
+                    {formatCurrency(dayLastBalance.totalSale)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-[var(--lv-muted-strong)]">Total expense</p>
+                  <p className="lv-tabular-mono mt-1 text-base font-semibold text-[var(--lv-heading)]">
+                    {formatCurrency(dayLastBalance.totalExpense)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-[var(--lv-muted-strong)]">Last balance</p>
+                  <p
+                    className={cn(
+                      "lv-tabular-mono mt-1 text-lg font-bold",
+                      dayLastBalance.lastBalance > 0 && "text-[var(--lv-traffic-positive)]",
+                      dayLastBalance.lastBalance < 0 && "text-[var(--lv-traffic-critical)]",
+                      dayLastBalance.lastBalance === 0 && "text-[var(--lv-heading)]",
+                    )}
+                  >
+                    {formatCurrency(dayLastBalance.lastBalance)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {businessType === "grocery" ? (
               <div className="flex flex-col gap-8">
                 <section className="flex flex-col gap-3">
@@ -703,6 +907,10 @@ export default function DailyEntryPage({
                 spesaCompanyHelpers={spesaCompanyHelpers}
                 otherSpesa={restOtherSpesa}
                 setOtherSpesa={setRestOtherSpesa}
+                cashExpenses={cashExpenses}
+                setCashExpenses={setCashExpenses}
+                bankExpenses={bankExpenses}
+                setBankExpenses={setBankExpenses}
                 namedHelpers={namedListHelpers}
                 notes={restNotes}
                 onNotesChange={setRestNotes}

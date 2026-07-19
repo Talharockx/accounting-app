@@ -29,6 +29,7 @@ import {
 import {
   insertTransactionsWithMetadataFallback,
   selectWithMetadataColumnFallback,
+  updateTransactionWithMetadataFallback,
 } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { downloadLedgerNotebookPdf } from "@/lib/reports/ledger-notebook-pdf";
@@ -394,9 +395,11 @@ export default function LedgerNotebookPage({
         : Date.now();
 
       if (editingId) {
-        const { error: updateError } = await supabase
-          .from("transactions")
-          .update({
+        const { error: updateError } = await updateTransactionWithMetadataFallback(
+          supabase,
+          editingId,
+          businessId,
+          {
             transaction_date: rowDate,
             amount: 0,
             description: details
@@ -409,10 +412,9 @@ export default function LedgerNotebookPage({
               details,
               sortIndex,
             }),
-          } as never)
-          .eq("id", editingId)
-          .eq("business_id", businessId);
-        if (updateError) throw new Error(updateError.message);
+          },
+        );
+        if (updateError) throw updateError;
         toast.success("Notebook row updated.");
       } else {
         const insert = buildLedgerRowInsert({

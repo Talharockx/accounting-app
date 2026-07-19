@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { businessTypeLabel, businessTypePlural, normalizeBusinessType } from "@/lib/business-types";
+import { isNotebookPlusWorkspace } from "@/lib/dashboard/notebook-plus";
 import { cn } from "@/lib/utils/cn";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -138,7 +139,16 @@ export default function DashboardPage() {
       const next: Business[] = [];
       for (const row of rows) {
         if (!row || typeof row !== "object") continue;
-        const parsed = parseBusinessRow(row as Record<string, unknown>);
+        const raw = row as Record<string, unknown>;
+        if (
+          isNotebookPlusWorkspace({
+            vat_number: typeof raw.vat_number === "string" ? raw.vat_number : null,
+            name: typeof raw.name === "string" ? raw.name : null,
+          })
+        ) {
+          continue;
+        }
+        const parsed = parseBusinessRow(raw);
         if (parsed) next.push(parsed);
       }
       setBusinesses(next);

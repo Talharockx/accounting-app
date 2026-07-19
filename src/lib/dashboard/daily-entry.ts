@@ -888,3 +888,20 @@ export function rowsForInsertWithoutMetadataColumn(rows: TransactionInsert[]): R
     };
   });
 }
+
+/** Same embed strategy for updates when `transactions.metadata` is missing from DB/schema cache. */
+export function patchForUpdateWithoutMetadataColumn(patch: {
+  metadata?: Record<string, unknown>;
+  description?: string | null;
+  [key: string]: unknown;
+}): Record<string, unknown> {
+  const { metadata, description, ...rest } = patch;
+  const baseDesc = stripEmbeddedMetaFromDescription(
+    typeof description === "string" ? description : "",
+  );
+  const suffix = META_EMBED_MARK + encodeURIComponent(JSON.stringify(metadata ?? {}));
+  return {
+    ...rest,
+    description: `${baseDesc}${suffix}`,
+  };
+}

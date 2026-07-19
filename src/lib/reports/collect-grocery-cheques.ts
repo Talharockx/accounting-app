@@ -14,7 +14,7 @@ export type GroceryChequeLineRow = {
   paid: boolean;
 };
 
-/** Grocery Daily Entry cheque lines for a date range. */
+/** Grocery Daily Entry cheque lines for a date range (entry date or due date). */
 export function collectGroceryChequesForRange(
   rows: TransactionWithMeta[],
   rangeStartISO: string,
@@ -23,7 +23,6 @@ export function collectGroceryChequesForRange(
   const out: GroceryChequeLineRow[] = [];
 
   for (const row of rows) {
-    if (row.transaction_date < rangeStartISO || row.transaction_date > rangeEndISO) continue;
     if (row.transaction_type !== "expense") continue;
     const m = getMetadata(row.metadata, row.description);
     if (metaString(m, "source") !== SOURCE_GROCERY) continue;
@@ -34,6 +33,11 @@ export function collectGroceryChequesForRange(
 
     const itemName = typeof m["item_name"] === "string" ? m["item_name"].trim() : "";
     const dueDate = typeof m["due_date"] === "string" ? m["due_date"] : "";
+    const entryInRange =
+      row.transaction_date >= rangeStartISO && row.transaction_date <= rangeEndISO;
+    const dueInRange = Boolean(dueDate) && dueDate >= rangeStartISO && dueDate <= rangeEndISO;
+    if (!entryInRange && !dueInRange) continue;
+
     out.push({
       date: row.transaction_date,
       name: itemName || "Cheque",
@@ -45,8 +49,8 @@ export function collectGroceryChequesForRange(
 
   out.sort(
     (a, b) =>
+      (a.dueDate || a.date).localeCompare(b.dueDate || b.date) ||
       a.date.localeCompare(b.date) ||
-      a.dueDate.localeCompare(b.dueDate) ||
       a.name.localeCompare(b.name),
   );
   return out;

@@ -95,25 +95,38 @@ export function GroceryChequesPage({
     setTxLoading(true);
     setTxError("");
     try {
+      // Load a wide window so cheques entered earlier (due this month) still appear,
+      // and future entry months remain selectable.
+      const lookbackStart = "2020-01-01";
+      const lookaheadEnd = (() => {
+        const [y, m] = monthRange.end.split("-").map(Number);
+        if (!y || !m) return monthRange.end;
+        const end = new Date(y, m - 1 + 24, 0); // ~24 months past selected month end
+        const yy = end.getFullYear();
+        const mm = String(end.getMonth() + 1).padStart(2, "0");
+        const dd = String(end.getDate()).padStart(2, "0");
+        return `${yy}-${mm}-${dd}`;
+      })();
+
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>
           await supabase
             .from("transactions")
             .select("amount, transaction_type, description, transaction_date, metadata")
             .eq("business_id", businessId)
-            .gte("transaction_date", monthRange.start)
-            .lte("transaction_date", monthRange.end)
+            .gte("transaction_date", lookbackStart)
+            .lte("transaction_date", lookaheadEnd)
             .order("transaction_date", { ascending: true })
-            .limit(5000),
+            .limit(8000),
         async () =>
           await supabase
             .from("transactions")
             .select("amount, transaction_type, description, transaction_date")
             .eq("business_id", businessId)
-            .gte("transaction_date", monthRange.start)
-            .lte("transaction_date", monthRange.end)
+            .gte("transaction_date", lookbackStart)
+            .lte("transaction_date", lookaheadEnd)
             .order("transaction_date", { ascending: true })
-            .limit(5000),
+            .limit(8000),
       );
 
       if (fetchError) {
@@ -145,7 +158,8 @@ export function GroceryChequesPage({
   const totalAmount = useMemo(() => sumGroceryChequeAmounts(lines), [lines]);
   const unpaidCount = useMemo(() => lines.filter((r) => !r.paid).length, [lines]);
 
-  const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
+  // Allow future months so due dates / entry dates ahead can be reviewed.
+  const maxMonthInput = toMonthInputValue(new Date().getFullYear() + 2, new Date().getMonth());
 
   const periodTitle = parsedMonth
     ? calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)
@@ -204,7 +218,8 @@ export function GroceryChequesPage({
               Cheques
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--lv-muted-strong)]">
-              Month view of all cheques from Daily Entry — name, amount, due date, and paid status.
+              Month view of cheques whose entry date or due date falls in the selected month —
+              including upcoming months.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">

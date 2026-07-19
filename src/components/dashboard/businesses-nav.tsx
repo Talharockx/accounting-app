@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { LedgerLogoNavLink } from "@/components/layout/ledger-logo-link";
 import { PressableButton } from "@/components/ui/pressable";
@@ -14,6 +15,11 @@ type BusinessesNavProps = {
 };
 
 export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onAddGrocery, onSignOutIntent }: BusinessesNavProps) {
+  const pathname = usePathname();
+  const onNotebookPlus =
+    pathname === "/dashboard/notebook-plus" || pathname.startsWith("/dashboard/notebook-plus/");
+  const onBusinessesHome = pathname === "/dashboard";
+
   const pillIdle =
     "inline-flex min-h-12 shrink-0 cursor-pointer touch-manipulation items-center rounded-[0.875rem] border border-[#ffffff10] px-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--lv-muted-strong)] transition-[transform,opacity] hover:border-[#ffffff24] hover:text-[var(--lv-heading)] active:scale-[0.98]";
   const pillAccent =
@@ -35,7 +41,7 @@ export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onAddGrocery, 
           <LedgerLogoNavLink />
 
           <nav aria-label="Main" className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-            <Link href="/dashboard" className={pillAccent}>
+            <Link href="/dashboard" className={onBusinessesHome ? pillAccent : pillIdle}>
               My businesses
             </Link>
             <button type="button" onClick={onAddRestaurant} className={pillIdle}>
@@ -47,6 +53,9 @@ export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onAddGrocery, 
             <button type="button" onClick={onAddGrocery} className={pillIdle}>
               Add grocery
             </button>
+            <Link href="/dashboard/notebook-plus" className={onNotebookPlus ? pillAccent : pillIdle}>
+              Notebook+
+            </Link>
           </nav>
         </div>
 

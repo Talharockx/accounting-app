@@ -9,8 +9,8 @@ import type { TransactionWithMeta } from "@/lib/dashboard/daily-entry";
 import { selectWithMetadataColumnFallback } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import {
-  collectMobileBankExpensesForRange,
-  collectMobileCashExpensesForRange,
+  collectBankExpensesForBusiness,
+  collectCashExpensesForBusiness,
   collectMobileExtrasForRange,
   formatDetailLineAmount,
   sumDetailLineAmounts,
@@ -33,11 +33,6 @@ type PageConfig = {
   emptyTitle: string;
   emptyHint: string;
   nameHeader: string;
-  collect: (
-    rows: TransactionWithMeta[],
-    start: string,
-    end: string,
-  ) => MobileDetailLineRow[];
 };
 
 const PAGE_CONFIG: Record<PageConfig["kind"], Omit<PageConfig, "kind">> = {
@@ -47,7 +42,6 @@ const PAGE_CONFIG: Record<PageConfig["kind"], Omit<PageConfig, "kind">> = {
     emptyTitle: "No extras this month",
     emptyHint: "Add named extra lines under Daily Entry for each date.",
     nameHeader: "Item",
-    collect: collectMobileExtrasForRange,
   },
   cash_expenses: {
     title: "Cash expenses",
@@ -55,7 +49,6 @@ const PAGE_CONFIG: Record<PageConfig["kind"], Omit<PageConfig, "kind">> = {
     emptyTitle: "No cash expenses this month",
     emptyHint: "Add cash expense lines under Daily Entry for each date.",
     nameHeader: "Detail",
-    collect: collectMobileCashExpensesForRange,
   },
   bank_expenses: {
     title: "Bank expenses",
@@ -63,7 +56,6 @@ const PAGE_CONFIG: Record<PageConfig["kind"], Omit<PageConfig, "kind">> = {
     emptyTitle: "No bank expenses this month",
     emptyHint: "Add bank expense lines under Daily Entry for each date.",
     nameHeader: "Detail",
-    collect: collectMobileBankExpensesForRange,
   },
 };
 
@@ -179,15 +171,41 @@ export function MobileDetailLinesPage({ params, kind }: Props) {
   }, [businessId, monthRange]);
 
   useEffect(() => {
-    if (!businessId || !monthRange || businessType !== "mobile_shop") return;
+    if (!businessId || !monthRange || !businessType) return;
+    if (kind === "extras" && businessType !== "mobile_shop") return;
+    if (
+      (kind === "cash_expenses" || kind === "bank_expenses") &&
+      businessType !== "mobile_shop" &&
+      businessType !== "restaurant" &&
+      businessType !== "grocery"
+    ) {
+      return;
+    }
     const id = window.setTimeout(() => void loadTransactions(), 0);
     return () => window.clearTimeout(id);
-  }, [businessId, monthRange, businessType, loadTransactions]);
+  }, [businessId, monthRange, businessType, loadTransactions, kind]);
 
   const detailLines = useMemo(() => {
-    if (!monthRange) return [];
-    return config.collect(transactions, monthRange.start, monthRange.end);
-  }, [config, monthRange, transactions]);
+    if (!monthRange || !businessType) return [];
+    if (kind === "extras") {
+      if (businessType !== "mobile_shop") return [];
+      return collectMobileExtrasForRange(transactions, monthRange.start, monthRange.end);
+    }
+    if (kind === "cash_expenses") {
+      return collectCashExpensesForBusiness(
+        businessType,
+        transactions,
+        monthRange.start,
+        monthRange.end,
+      );
+    }
+    return collectBankExpensesForBusiness(
+      businessType,
+      transactions,
+      monthRange.start,
+      monthRange.end,
+    );
+  }, [kind, monthRange, transactions, businessType]);
 
   const totalAmount = useMemo(() => sumDetailLineAmounts(detailLines), [detailLines]);
 
@@ -224,12 +242,19 @@ export function MobileDetailLinesPage({ params, kind }: Props) {
     );
   }
 
-  if (businessType !== "mobile_shop") {
+  const allowedForKind =
+    kind === "extras"
+      ? businessType === "mobile_shop"
+      : businessType === "mobile_shop" ||
+        businessType === "restaurant" ||
+        businessType === "grocery";
+
+  if (!allowedForKind) {
     return (
       <div className="glass-panel rounded-[1.625rem] p-8 text-center">
         <p className="text-lg font-semibold text-[var(--lv-heading)]">{config.title}</p>
         <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
-          This section is available for mobile shop workspaces only.
+          This section is not available for this workspace type.
         </p>
       </div>
     );

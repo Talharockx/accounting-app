@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { TransactionInsert } from "@/lib/dashboard/daily-entry";
-import { rowsForInsertWithoutMetadataColumn } from "@/lib/dashboard/daily-entry";
+import {
+  patchForUpdateWithoutMetadataColumn,
+  rowsForInsertWithoutMetadataColumn,
+} from "@/lib/dashboard/daily-entry";
 
 /** PostgREST / Postgres when `transactions.metadata` has not been created yet. */
 export function isMissingTransactionsMetadataColumnError(message: string | undefined | null): boolean {
@@ -32,6 +35,38 @@ export async function insertTransactionsWithMetadataFallback(
   }
 
   const second = await client.from("transactions").insert(rowsForInsertWithoutMetadataColumn(rows) as never);
+  if (second.error) {
+    return { error: new Error(second.error.message) };
+  }
+  return { error: null };
+}
+
+export async function updateTransactionWithMetadataFallback(
+  client: SupabaseClient,
+  id: string,
+  businessId: string,
+  patch: {
+    metadata?: Record<string, unknown>;
+    description?: string | null;
+    [key: string]: unknown;
+  },
+): Promise<{ error: Error | null }> {
+  const first = await client
+    .from("transactions")
+    .update(patch as never)
+    .eq("id", id)
+    .eq("business_id", businessId);
+  if (!first.error) return { error: null };
+
+  if (!isMissingTransactionsMetadataColumnError(first.error.message)) {
+    return { error: new Error(first.error.message) };
+  }
+
+  const second = await client
+    .from("transactions")
+    .update(patchForUpdateWithoutMetadataColumn(patch) as never)
+    .eq("id", id)
+    .eq("business_id", businessId);
   if (second.error) {
     return { error: new Error(second.error.message) };
   }

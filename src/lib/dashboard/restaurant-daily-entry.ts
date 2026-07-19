@@ -35,6 +35,8 @@ export type RestaurantMetaLine =
   | "other_spesa"
   | "rent"
   | "person_purchase"
+  | "expense_cash_line"
+  | "expense_bank_line"
   | "daily_notes"
   /** Legacy daily-entry lines (read-only). */
   | "purchases"
@@ -61,6 +63,8 @@ export type RestaurantDailyInput = {
   other_spesa: NamedMoneyLine[];
   rent: number;
   person_purchases: NamedMoneyLine[];
+  cash_expenses: NamedMoneyLine[];
+  bank_expenses: NamedMoneyLine[];
   notes: string;
 };
 
@@ -77,6 +81,8 @@ export type RestaurantDayTotals = {
   otherSpesa: number;
   rent: number;
   personPurchases: number;
+  cashExpenses: number;
+  bankExpenses: number;
   totalSpesa: number;
   totalProfit: number;
 };
@@ -90,6 +96,8 @@ export type RestaurantDailyDraft = {
   other_spesa: NamedMoneyLine[];
   rent: number;
   person_purchases: NamedMoneyLine[];
+  cash_expenses: NamedMoneyLine[];
+  bank_expenses: NamedMoneyLine[];
   notes: string;
 };
 
@@ -136,6 +144,8 @@ function emptyTotals(): RestaurantDayTotals {
     otherSpesa: 0,
     rent: 0,
     personPurchases: 0,
+    cashExpenses: 0,
+    bankExpenses: 0,
     totalSpesa: 0,
     totalProfit: 0,
   };
@@ -171,6 +181,10 @@ export function restaurantProfitFromTransactions(rows: TransactionWithMeta[]): R
         t.rent += amt;
       } else if (line === "person_purchase" && row.transaction_type === "expense") {
         t.personPurchases += amt;
+      } else if (line === "expense_cash_line" && row.transaction_type === "expense") {
+        t.cashExpenses += amt;
+      } else if (line === "expense_bank_line" && row.transaction_type === "expense") {
+        t.bankExpenses += amt;
       } else if (line === "purchases" && row.transaction_type === "expense") {
         t.otherSpesa += amt;
       } else if (line === "expenses" && row.transaction_type === "expense") {
@@ -188,7 +202,14 @@ export function restaurantProfitFromTransactions(rows: TransactionWithMeta[]): R
 
   t.companySaleTotal = t.glovo + t.justEat + t.deliveroo;
   t.totalSale = t.cashSaleTotal + t.bankSaleTotal + t.companySaleTotal;
-  t.totalSpesa = t.kebabPurchase + t.ccPurchase + t.otherSpesa + t.rent + t.personPurchases;
+  t.totalSpesa =
+    t.kebabPurchase +
+    t.ccPurchase +
+    t.otherSpesa +
+    t.rent +
+    t.personPurchases +
+    t.cashExpenses +
+    t.bankExpenses;
   t.totalProfit = t.totalSale - t.totalSpesa;
   return t;
 }
@@ -206,6 +227,8 @@ export function parseRestaurantDailyFromTransactions(
     other_spesa: [],
     rent: 0,
     person_purchases: [],
+    cash_expenses: [],
+    bank_expenses: [],
     notes: "",
   };
 
@@ -233,6 +256,16 @@ export function parseRestaurantDailyFromTransactions(
     } else if (line === "rent" && row.transaction_type === "expense") draft.rent += amt;
     else if (line === "person_purchase" && row.transaction_type === "expense" && amt > 0) {
       draft.person_purchases.push({
+        item_name: metaString(m, "item_name") ?? "",
+        amount: amt,
+      });
+    } else if (line === "expense_cash_line" && row.transaction_type === "expense" && amt > 0) {
+      draft.cash_expenses.push({
+        item_name: metaString(m, "item_name") ?? "",
+        amount: amt,
+      });
+    } else if (line === "expense_bank_line" && row.transaction_type === "expense" && amt > 0) {
+      draft.bank_expenses.push({
         item_name: metaString(m, "item_name") ?? "",
         amount: amt,
       });
@@ -363,6 +396,44 @@ export function buildRestaurantDailyRows(input: RestaurantDailyInput): Transacti
       metadata: {
         source,
         line: "person_purchase" satisfies RestaurantMetaLine,
+        item_name: name,
+      },
+    });
+  }
+
+  for (let i = 0; i < input.cash_expenses.length; i += 1) {
+    const line = input.cash_expenses[i];
+    if (!line || line.amount <= 0) continue;
+    const name = trimName(line.item_name);
+    rows.push({
+      business_id: input.business_id,
+      transaction_type: "expense",
+      amount: line.amount,
+      description: name ? `Restaurant: Cash expense: ${name}` : `Restaurant: Cash expense (${i + 1})`,
+      transaction_date: input.transaction_date,
+      created_by_user_id: input.created_by_user_id,
+      metadata: {
+        source,
+        line: "expense_cash_line" satisfies RestaurantMetaLine,
+        item_name: name,
+      },
+    });
+  }
+
+  for (let i = 0; i < input.bank_expenses.length; i += 1) {
+    const line = input.bank_expenses[i];
+    if (!line || line.amount <= 0) continue;
+    const name = trimName(line.item_name);
+    rows.push({
+      business_id: input.business_id,
+      transaction_type: "expense",
+      amount: line.amount,
+      description: name ? `Restaurant: Bank expense: ${name}` : `Restaurant: Bank expense (${i + 1})`,
+      transaction_date: input.transaction_date,
+      created_by_user_id: input.created_by_user_id,
+      metadata: {
+        source,
+        line: "expense_bank_line" satisfies RestaurantMetaLine,
         item_name: name,
       },
     });

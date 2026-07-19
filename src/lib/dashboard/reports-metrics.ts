@@ -26,7 +26,7 @@ export function dailySalesExpensesProfit(
 ): Omit<DailyFinancialBreakdown, "date"> {
   const dayRows = rows.filter((r) => r.transaction_date === dateISO);
   if (businessType === "grocery") {
-    const t = groceryProfitFromTransactions(rows);
+    const t = groceryProfitFromTransactions(dayRows);
     return {
       sales: t.totalSale,
       purchases: 0,

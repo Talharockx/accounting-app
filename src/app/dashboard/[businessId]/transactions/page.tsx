@@ -76,6 +76,8 @@ type RestaurantEdit = {
   otherSpesa: NamedRowStr[];
   rent: string;
   personPurchases: NamedRowStr[];
+  cashExpenses: NamedRowStr[];
+  bankExpenses: NamedRowStr[];
   notes: string;
 };
 
@@ -143,6 +145,8 @@ export default function TransactionsPage({
       other_spesa: restaurantNamedLinesFromForm(r.otherSpesa),
       rent: 0,
       person_purchases: [],
+      cash_expenses: restaurantNamedLinesFromForm(r.cashExpenses),
+      bank_expenses: restaurantNamedLinesFromForm(r.bankExpenses),
       notes: r.notes,
     }).map((row) => ({
       amount: row.amount,
@@ -365,6 +369,8 @@ export default function TransactionsPage({
           other_spesa: restaurantNamedLinesFromForm(r.otherSpesa),
           rent: 0,
           person_purchases: [],
+          cash_expenses: restaurantNamedLinesFromForm(r.cashExpenses),
+          bank_expenses: restaurantNamedLinesFromForm(r.bankExpenses),
           notes: r.notes,
         });
 
@@ -449,6 +455,12 @@ export default function TransactionsPage({
       rent: formatMoneyInputValue(d.rent),
       personPurchases: d.person_purchases.length
         ? d.person_purchases.map((r) => ({ itemName: r.item_name, amount: formatMoneyInputValue(r.amount) }))
+        : [emptyNamed()],
+      cashExpenses: d.cash_expenses.length
+        ? d.cash_expenses.map((r) => ({ itemName: r.item_name, amount: formatMoneyInputValue(r.amount) }))
+        : [emptyNamed()],
+      bankExpenses: d.bank_expenses.length
+        ? d.bank_expenses.map((r) => ({ itemName: r.item_name, amount: formatMoneyInputValue(r.amount) }))
         : [emptyNamed()],
       notes: d.notes ?? "",
     });
@@ -666,6 +678,22 @@ export default function TransactionsPage({
                     if (!p || p.kind !== "restaurant") return p;
                     const next = typeof action === "function" ? action(p.otherSpesa) : action;
                     return { ...p, otherSpesa: next };
+                  })
+                }
+                cashExpenses={editing.cashExpenses}
+                setCashExpenses={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "restaurant") return p;
+                    const next = typeof action === "function" ? action(p.cashExpenses) : action;
+                    return { ...p, cashExpenses: next };
+                  })
+                }
+                bankExpenses={editing.bankExpenses}
+                setBankExpenses={(action) =>
+                  setEditing((p) => {
+                    if (!p || p.kind !== "restaurant") return p;
+                    const next = typeof action === "function" ? action(p.bankExpenses) : action;
+                    return { ...p, bankExpenses: next };
                   })
                 }
                 namedHelpers={namedListHelpers}

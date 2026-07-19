@@ -16,6 +16,7 @@ import {
 import {
   insertTransactionsWithMetadataFallback,
   selectWithMetadataColumnFallback,
+  updateTransactionWithMetadataFallback,
 } from "@/lib/dashboard/transaction-metadata-fallback";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { downloadNotebookPdf } from "@/lib/reports/notebook-pdf";
@@ -185,18 +186,19 @@ export default function NotebookPage({
     try {
       if (editingId) {
         const titleTrim = title.trim();
-        const { error: updateError } = await supabase
-          .from("transactions")
-          .update({
+        const { error: updateError } = await updateTransactionWithMetadataFallback(
+          supabase,
+          editingId,
+          businessId,
+          {
             transaction_date: noteDate,
             description: titleTrim ? `${DESC_NOTEBOOK}: ${titleTrim}` : DESC_NOTEBOOK,
             metadata: notebookMetadataPatch(titleTrim, trimmedBody),
-          } as never)
-          .eq("id", editingId)
-          .eq("business_id", businessId);
+          },
+        );
 
-        if (updateError) throw new Error(updateError.message);
-      toast.success("Notes + entry updated.");
+        if (updateError) throw updateError;
+        toast.success("Notes + entry updated.");
       } else {
         const row = buildNotebookInsert({
           business_id: businessId,

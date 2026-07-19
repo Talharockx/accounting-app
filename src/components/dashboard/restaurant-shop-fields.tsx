@@ -254,6 +254,10 @@ export function RestaurantDailyEntryFields({
   spesaCompanyHelpers,
   otherSpesa,
   setOtherSpesa,
+  cashExpenses,
+  setCashExpenses,
+  bankExpenses,
+  setBankExpenses,
   namedHelpers,
   notes,
   onNotesChange,
@@ -272,6 +276,10 @@ export function RestaurantDailyEntryFields({
   spesaCompanyHelpers: SpesaCompanyListHelpers;
   otherSpesa: NamedRowStr[];
   setOtherSpesa: Dispatch<SetStateAction<NamedRowStr[]>>;
+  cashExpenses: NamedRowStr[];
+  setCashExpenses: Dispatch<SetStateAction<NamedRowStr[]>>;
+  bankExpenses: NamedRowStr[];
+  setBankExpenses: Dispatch<SetStateAction<NamedRowStr[]>>;
   namedHelpers: NamedListHelpers;
   notes: string;
   onNotesChange: (v: string) => void;
@@ -339,6 +347,26 @@ export function RestaurantDailyEntryFields({
         nameFieldLabel="Company / detail"
         rows={otherSpesa}
         setRows={setOtherSpesa}
+        helpers={namedHelpers}
+      />
+
+      <NamedLinesOnly
+        idPrefix={`${idPrefix}-cash-exp`}
+        title="Cash expenses"
+        hint="Paid in cash — one line per payment."
+        nameFieldLabel="Detail"
+        rows={cashExpenses}
+        setRows={setCashExpenses}
+        helpers={namedHelpers}
+      />
+
+      <NamedLinesOnly
+        idPrefix={`${idPrefix}-bank-exp`}
+        title="Bank expenses"
+        hint="Card or bank payments — one line per payment."
+        nameFieldLabel="Detail"
+        rows={bankExpenses}
+        setRows={setBankExpenses}
         helpers={namedHelpers}
       />
 

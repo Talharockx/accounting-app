@@ -365,10 +365,6 @@ export default function BusinessOverviewPage({
           <MetricMini label="Bank sale total" value={formatCurrency(groceryTotals.bankSaleTotal)} />
           <MetricMini label="Cash sale total" value={formatCurrency(groceryTotals.cashSaleTotal)} />
           <MetricMini label="Total sale" value={formatCurrency(groceryTotals.totalSale)} className="lg:col-span-2" />
-          <MetricMini label="Amadari" value={formatCurrency(groceryTotals.companyAmadari)} />
-          <MetricMini label="Cip./Pat." value={formatCurrency(groceryTotals.companyCipPat)} />
-          <MetricMini label="Eurospin" value={formatCurrency(groceryTotals.companyEurospin)} />
-          <MetricMini label="Aia" value={formatCurrency(groceryTotals.companyAia)} />
           <MetricMini label="Spesa total" value={formatCurrency(groceryTotals.spesaTotal)} className="lg:col-span-2" />
           <MetricMini label="Cheques total" value={formatCurrency(groceryTotals.cheques)} />
         </div>
