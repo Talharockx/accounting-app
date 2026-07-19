@@ -68,6 +68,57 @@ function StatGrid({ items }: { items: { label: string; value: string }[] }) {
   );
 }
 
+/** Cash sale − cash expense for Day Review. */
+function CashBalanceSection({
+  cashSale,
+  cashExpense,
+}: {
+  cashSale: number;
+  cashExpense: number;
+}) {
+  return (
+    <Section title="Cash" hint="Cash sale minus cash expense for this date.">
+      <StatGrid
+        items={[
+          { label: "Cash sale", value: formatCurrency(cashSale) },
+          { label: "Cash expense", value: formatCurrency(cashExpense) },
+          {
+            label: "Cash sale − Cash expense",
+            value: formatCurrency(cashSale - cashExpense),
+          },
+        ]}
+      />
+    </Section>
+  );
+}
+
+/** Bank sale − bank expense for Day Review. */
+function BankBalanceSection({
+  bankSale,
+  bankExpense,
+  bankSaleLabel = "Bank sale",
+}: {
+  bankSale: number;
+  bankExpense: number;
+  /** Mobile uses POS as bank/card sales. */
+  bankSaleLabel?: string;
+}) {
+  return (
+    <Section title="Bank" hint="Bank sale minus bank expense for this date.">
+      <StatGrid
+        items={[
+          { label: bankSaleLabel, value: formatCurrency(bankSale) },
+          { label: "Bank expense", value: formatCurrency(bankExpense) },
+          {
+            label: "Bank sale − Bank expense",
+            value: formatCurrency(bankSale - bankExpense),
+          },
+        ]}
+      />
+    </Section>
+  );
+}
+
 function MerchTable({ rows, emptyLabel }: { rows: MerchPairLine[]; emptyLabel: string }) {
   const visible = rows.filter((r) => r.retail > 0 || r.buy > 0 || r.item_name.trim().length > 0);
   if (visible.length === 0) {
@@ -365,6 +416,14 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
                 ]}
               />
             </Section>
+            <CashBalanceSection
+              cashSale={groceryTotals.cashSaleTotal}
+              cashExpense={groceryTotals.cashExpense}
+            />
+            <BankBalanceSection
+              bankSale={groceryTotals.bankSaleTotal}
+              bankExpense={groceryTotals.spesaPos}
+            />
             <Section title="Day notes">
               {isBlankNote(groceryDraft.notes) ? (
                 <p className="text-sm text-[var(--lv-muted-strong)]">No notes for this date.</p>
@@ -406,6 +465,14 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
                 ]}
               />
             </Section>
+            <CashBalanceSection
+              cashSale={restaurantTotals.cashSaleTotal}
+              cashExpense={restaurantTotals.cashExpenses}
+            />
+            <BankBalanceSection
+              bankSale={restaurantTotals.bankSaleTotal}
+              bankExpense={restaurantTotals.bankExpenses}
+            />
 
             <Section title="Shop sales" hint="Bank and cash turnover for the day.">
               <StatGrid
@@ -482,6 +549,15 @@ export default function DayReviewPage({ params }: { params: Promise<{ businessId
                 ]}
               />
             </Section>
+            <CashBalanceSection
+              cashSale={mobileSummary.totalCashSale}
+              cashExpense={mobileSummary.cashExpense}
+            />
+            <BankBalanceSection
+              bankSale={mobileSummary.pos}
+              bankExpense={mobileSummary.bankExpense}
+              bankSaleLabel="Bank sale (POS)"
+            />
 
             <Section title="SIM" hint="Shop SIM cost and SIM retail.">
               <StatGrid

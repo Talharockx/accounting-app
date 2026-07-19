@@ -7,6 +7,7 @@ import {
 } from "@/lib/dashboard/mobile-transaction-ledger";
 import type { MobilePersonExpenseMatrixReport } from "@/lib/reports/mobile-person-expense-matrix";
 import type { RestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
+import type { GroceryReportMatrix } from "@/lib/reports/grocery-report-matrix";
 import { formatCurrency } from "@/lib/utils/formatters";
 import type { ProfitTrendDatum, SalesVsExpensesDatum } from "@/components/dashboard/reports-performance-charts";
 import {
@@ -63,6 +64,8 @@ export type MonthlyReportPdfInput = {
   mobileExecutiveSummary?: MobileExecutiveSummary | null;
   /** Restaurant: month grid (Bank/Cash/Glovo/…/Total Spesa/Total Profit). */
   restaurantReportMatrix?: RestaurantReportMatrix | null;
+  /** Grocery: month grid (Bank/Cash/…/Spesa/Cheques/Total Profit). */
+  groceryReportMatrix?: GroceryReportMatrix | null;
 };
 
 function money(n: number): string {
@@ -329,7 +332,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
     if (profitTrendPng) addChartImage(profitTrendPng);
   }
 
-  type MatrixReport = MobileLedgerMatrixReport | MobilePersonExpenseMatrixReport | RestaurantReportMatrix;
+  type MatrixReport = MobileLedgerMatrixReport | MobilePersonExpenseMatrixReport | RestaurantReportMatrix | GroceryReportMatrix;
 
   const ledgerMatrix =
     mobileClient &&
@@ -346,6 +349,13 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
       ? input.restaurantReportMatrix
       : null;
 
+  const groceryMatrix =
+    input.groceryReportMatrix &&
+    input.groceryReportMatrix.columns.length > 0 &&
+    input.groceryReportMatrix.rows.length > 0
+      ? input.groceryReportMatrix
+      : null;
+
   const hasNamedPersonMatrix = Boolean(
     mobileClient &&
       !ledgerMatrix &&
@@ -355,7 +365,7 @@ export async function generateMonthlyReportPdfBlob(input: MonthlyReportPdfInput)
   );
 
   let matrixForPdf: MatrixReport | null =
-    ledgerMatrix ?? restaurantMatrix ?? (hasNamedPersonMatrix ? input.mobilePersonMatrix! : null);
+    ledgerMatrix ?? restaurantMatrix ?? groceryMatrix ?? (hasNamedPersonMatrix ? input.mobilePersonMatrix! : null);
 
   /** Named lines missing in DB metadata but month has operating → still use sheet layout (one column). */
   if (

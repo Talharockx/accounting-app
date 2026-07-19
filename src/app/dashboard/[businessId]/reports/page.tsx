@@ -38,7 +38,9 @@ import { PressableButton } from "@/components/ui/pressable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MobileLedgerReportsTable } from "@/components/dashboard/mobile-ledger-reports-table";
 import { RestaurantReportsTable } from "@/components/dashboard/restaurant-reports-table";
+import { GroceryReportsTable } from "@/components/dashboard/grocery-reports-table";
 import { buildRestaurantReportMatrix } from "@/lib/reports/restaurant-report-matrix";
+import { buildGroceryReportMatrix } from "@/lib/reports/grocery-report-matrix";
 import { cn } from "@/lib/utils/cn";
 
 type BusinessRow = {
@@ -237,6 +239,14 @@ export default function ReportsPage({
     return buildRestaurantReportMatrix(inMonth, monthRange.start, monthRange.end);
   }, [businessType, monthRange, transactions]);
 
+  const groceryReportMatrix = useMemo(() => {
+    if (businessType !== "grocery" || !monthRange) return null;
+    const inMonth = transactions.filter(
+      (t) => t.transaction_date >= monthRange.start && t.transaction_date <= monthRange.end,
+    );
+    return buildGroceryReportMatrix(inMonth, monthRange.start, monthRange.end);
+  }, [businessType, monthRange, transactions]);
+
   const mobileLedgerMatrix = useMemo(() => {
     if (businessType !== "mobile_shop" || !monthRange) return null;
     return buildMobileTransactionLedgerMatrix(transactions, monthRange.start, monthRange.end);
@@ -283,6 +293,10 @@ export default function ReportsPage({
         businessType === "restaurant" && monthRange
           ? buildRestaurantReportMatrix(inMonthTransactions, monthRange.start, monthRange.end)
           : null;
+      const groceryReportMatrixPdf =
+        businessType === "grocery" && monthRange
+          ? buildGroceryReportMatrix(inMonthTransactions, monthRange.start, monthRange.end)
+          : null;
       await downloadMonthlyReportPdf({
         businessName: business.name,
         dateRangeLabel: `${monthRange.start} → ${monthRange.end}`,
@@ -296,6 +310,7 @@ export default function ReportsPage({
         mobileExecutiveSummary,
         mobileLedgerMatrix: mobileLedgerMatrixPdf,
         restaurantReportMatrix: restaurantReportMatrixPdf,
+        groceryReportMatrix: groceryReportMatrixPdf,
       });
       setPdfMessage("PDF report downloaded.");
       toast.success("Monthly report downloaded.");
@@ -498,6 +513,26 @@ export default function ReportsPage({
             <Skeleton className="h-48 w-full rounded-[1.625rem]" />
           ) : (
             <RestaurantReportsTable matrix={restaurantReportMatrix ?? { columns: [], rows: [], columnTotals: [] }} />
+          )}
+        </section>
+      ) : null}
+
+      {businessType === "grocery" ? (
+        <section className="rounded-[1.625rem] border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-liquid-fill)] p-5 shadow-[var(--lv-bento-shadow)] backdrop-blur-3xl sm:p-7">
+          <h2 className="mb-2 text-lg font-bold tracking-tight text-[var(--lv-heading)]">Monthly entries</h2>
+          <p className="mb-6 max-w-3xl text-sm text-[var(--lv-muted-strong)]">
+            Same columns as the PDF export and Transactions tab, plus cash and bank expense.{" "}
+            <strong className="text-[var(--lv-heading)]">Total profit</strong> = Total sale − Spesa total. Scroll
+            right to see the last columns.
+          </p>
+          {txError ? (
+            <p className="text-sm font-medium text-[var(--lv-traffic-critical)]" role="alert">
+              {txError}
+            </p>
+          ) : txLoading ? (
+            <Skeleton className="h-48 w-full rounded-[1.625rem]" />
+          ) : (
+            <GroceryReportsTable matrix={groceryReportMatrix ?? { columns: [], rows: [], columnTotals: [] }} />
           )}
         </section>
       ) : null}
