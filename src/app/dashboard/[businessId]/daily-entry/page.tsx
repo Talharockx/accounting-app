@@ -63,9 +63,10 @@ import { businessTypeLabel, type BusinessType } from "@/lib/business-types";
 import {
   buildGroceryDailyRows,
   emptyCompanyExpenseRows,
-  groceryBankExpenseAmount,
-  groceryCashExpenseAmount,
+  groceryBankExpenseNamedFromFixed,
+  groceryCashExpenseNamedFromFixed,
   groceryChequesFromForm,
+  groceryFixedExpensesFromNamedForms,
   groceryNamedLinesFromForm,
   groceryPersonSalesFromForm,
   groceryProfitFromTransactions,
@@ -123,8 +124,6 @@ export default function DailyEntryPage({
   const [personSales, setPersonSales] = useState<PersonSaleRowStr[]>([emptyPersonSale()]);
   const [companyExpenses, setCompanyExpenses] = useState<NamedRowStr[]>(emptyCompanyExpenseRows());
   const [cheques, setCheques] = useState<ChequeRowStr[]>([emptyCheque()]);
-  const [groceryBankExpense, setGroceryBankExpense] = useState("");
-  const [groceryCashExpense, setGroceryCashExpense] = useState("");
   const [groceryNotes, setGroceryNotes] = useState("");
 
   const applyRestaurantDraftStrings = useCallback(
@@ -235,8 +234,24 @@ export default function DailyEntryPage({
           paid: r.paid,
         })),
       );
-      setGroceryBankExpense(formatMoneyInputValue(groceryBankExpenseAmount(draft.fixed_expenses)));
-      setGroceryCashExpense(formatMoneyInputValue(groceryCashExpenseAmount(draft.fixed_expenses)));
+      const cashLines = groceryCashExpenseNamedFromFixed(draft.fixed_expenses);
+      setCashExpenses(
+        cashLines.length
+          ? cashLines.map((r) => ({
+              itemName: r.item_name,
+              amount: formatMoneyInputValue(r.amount),
+            }))
+          : [emptyNamed()],
+      );
+      const bankLines = groceryBankExpenseNamedFromFixed(draft.fixed_expenses);
+      setBankExpenses(
+        bankLines.length
+          ? bankLines.map((r) => ({
+              itemName: r.item_name,
+              amount: formatMoneyInputValue(r.amount),
+            }))
+          : [emptyNamed()],
+      );
       setGroceryNotes(draft.notes ?? "");
     },
     [],
@@ -387,11 +402,6 @@ export default function DailyEntryPage({
     const uid = userId || "preview";
 
     if (businessType === "grocery") {
-      const bankExpenseAmt = parseNonNegative(groceryBankExpense);
-      const cashExpenseAmt = parseNonNegative(groceryCashExpense);
-      const fixed_expenses: { category: "bank_expense" | "cash_expense"; amount: number }[] = [];
-      if (cashExpenseAmt > 0) fixed_expenses.push({ category: "cash_expense", amount: cashExpenseAmt });
-      if (bankExpenseAmt > 0) fixed_expenses.push({ category: "bank_expense", amount: bankExpenseAmt });
       const t = groceryProfitFromTransactions(
         previewMetaRows(
           buildGroceryDailyRows({
@@ -405,7 +415,7 @@ export default function DailyEntryPage({
             person_expenses: [],
             kametti_expenses: [],
             cheques: groceryChequesFromForm(cheques),
-            fixed_expenses,
+            fixed_expenses: groceryFixedExpensesFromNamedForms(cashExpenses, bankExpenses),
             notes: groceryNotes,
           }),
         ),
@@ -490,8 +500,6 @@ export default function DailyEntryPage({
     entryDate,
     groceryBank,
     groceryCash,
-    groceryBankExpense,
-    groceryCashExpense,
     personSales,
     companyExpenses,
     cheques,
@@ -544,11 +552,6 @@ export default function DailyEntryPage({
     return restaurantDayHasContent(previewRows) || !isBlankNote(restNotes);
   };
   const groceryEntryHasContent = () => {
-    const bankExpenseAmt = parseNonNegative(groceryBankExpense);
-    const cashExpenseAmt = parseNonNegative(groceryCashExpense);
-    const fixed_expenses: { category: "bank_expense" | "cash_expense"; amount: number }[] = [];
-    if (cashExpenseAmt > 0) fixed_expenses.push({ category: "cash_expense", amount: cashExpenseAmt });
-    if (bankExpenseAmt > 0) fixed_expenses.push({ category: "bank_expense", amount: bankExpenseAmt });
     const draft = {
       bank_sales: parseNonNegative(groceryBank),
       cash_sales: parseNonNegative(groceryCash),
@@ -557,7 +560,7 @@ export default function DailyEntryPage({
       person_expenses: [],
       kametti_expenses: [],
       cheques: groceryChequesFromForm(cheques),
-      fixed_expenses,
+      fixed_expenses: groceryFixedExpensesFromNamedForms(cashExpenses, bankExpenses),
       notes: groceryNotes,
     };
     const totals = groceryProfitFromTransactions(
@@ -666,11 +669,6 @@ export default function DailyEntryPage({
           if (insertError) throw insertError;
         }
       } else if (businessType === "grocery") {
-        const bankExpenseAmt = parseNonNegative(groceryBankExpense);
-        const cashExpenseAmt = parseNonNegative(groceryCashExpense);
-        const fixed_expenses: { category: "bank_expense" | "cash_expense"; amount: number }[] = [];
-        if (cashExpenseAmt > 0) fixed_expenses.push({ category: "cash_expense", amount: cashExpenseAmt });
-        if (bankExpenseAmt > 0) fixed_expenses.push({ category: "bank_expense", amount: bankExpenseAmt });
         const rows = buildGroceryDailyRows({
           business_id: businessId,
           created_by_user_id: userId,
@@ -682,7 +680,7 @@ export default function DailyEntryPage({
           person_expenses: [],
           kametti_expenses: [],
           cheques: groceryChequesFromForm(cheques),
-          fixed_expenses,
+          fixed_expenses: groceryFixedExpensesFromNamedForms(cashExpenses, bankExpenses),
           notes: groceryNotes,
         });
 
@@ -848,22 +846,24 @@ export default function DailyEntryPage({
                   helpers={namedListHelpers}
                 />
 
-                <MidnightField
-                  id="grocery-cash-expense"
-                  label="Cash expense"
-                  type="text"
-                  inputMode="decimal"
-                  value={groceryCashExpense}
-                  onChange={(e) => clampInput(e.target.value, setGroceryCashExpense)}
+                <NamedLinesOnly
+                  idPrefix="g-exp-cash"
+                  title="Cash expenses"
+                  hint="Paid in cash — add as many lines as needed. Use Detail for what each payment was for."
+                  nameFieldLabel="Detail"
+                  rows={cashExpenses}
+                  setRows={setCashExpenses}
+                  helpers={namedListHelpers}
                 />
 
-                <MidnightField
-                  id="grocery-bank-expense"
-                  label="Bank expense"
-                  type="text"
-                  inputMode="decimal"
-                  value={groceryBankExpense}
-                  onChange={(e) => clampInput(e.target.value, setGroceryBankExpense)}
+                <NamedLinesOnly
+                  idPrefix="g-exp-bank"
+                  title="Bank expenses"
+                  hint="Paid by card or bank — add as many lines as needed. Use Detail for what each charge was for."
+                  nameFieldLabel="Detail"
+                  rows={bankExpenses}
+                  setRows={setBankExpenses}
+                  helpers={namedListHelpers}
                 />
 
                 <ChequesBlock idPrefix="g-cheque" rows={cheques} setRows={setCheques} helpers={chequeHelpers} />

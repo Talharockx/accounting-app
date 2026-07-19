@@ -683,3 +683,49 @@ export function groceryCashExpenseAmount(fixed: GroceryFixedExpenseLine[]): numb
     return sum;
   }, 0);
 }
+
+/** Cash expense lines (detail + amount) from stored fixed expenses. */
+export function groceryCashExpenseNamedFromFixed(fixed: GroceryFixedExpenseLine[]): NamedMoneyLine[] {
+  return fixed
+    .filter((line) => line.category === "cash_expense" && line.amount > 0)
+    .map((line) => ({ item_name: line.label ?? "", amount: line.amount }));
+}
+
+/** Bank / POS expense lines (detail + amount) from stored fixed expenses. */
+export function groceryBankExpenseNamedFromFixed(fixed: GroceryFixedExpenseLine[]): NamedMoneyLine[] {
+  return fixed
+    .filter(
+      (line) =>
+        (line.category === "bank_expense" || line.category === "pos_expense") && line.amount > 0,
+    )
+    .map((line) => ({ item_name: line.label ?? "", amount: line.amount }));
+}
+
+/** Build fixed expense rows from multi-line Cash / Bank expense forms (detail optional). */
+export function groceryFixedExpensesFromNamedForms(
+  cashRows: { itemName: string; amount: string }[],
+  bankRows: { itemName: string; amount: string }[],
+): GroceryFixedExpenseLine[] {
+  const out: GroceryFixedExpenseLine[] = [];
+  for (const row of cashRows) {
+    const amount = parseNonNegative(row.amount);
+    if (amount <= 0) continue;
+    const label = row.itemName.trim();
+    out.push({
+      category: "cash_expense",
+      amount,
+      label: label || undefined,
+    });
+  }
+  for (const row of bankRows) {
+    const amount = parseNonNegative(row.amount);
+    if (amount <= 0) continue;
+    const label = row.itemName.trim();
+    out.push({
+      category: "bank_expense",
+      amount,
+      label: label || undefined,
+    });
+  }
+  return out;
+}
