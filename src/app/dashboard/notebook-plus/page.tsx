@@ -862,7 +862,7 @@ export default function NotebookPlusPage() {
         description="You will need to sign in again to manage businesses and Notebook+."
         confirmLabel="Sign out"
         cancelLabel="Stay"
-        tone="danger"
+        destructive
         onCancel={() => setSignOutConfirm(false)}
         onConfirm={() => {
           setSignOutConfirm(false);
