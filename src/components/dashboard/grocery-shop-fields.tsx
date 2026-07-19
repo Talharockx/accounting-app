@@ -109,9 +109,7 @@ export function CompanyExpensesBlock({
             key={`${idPrefix}-${row.itemName}`}
             id={`${idPrefix}-amt-${index}`}
             label={row.itemName}
-            type="number"
-            min={0}
-            step="0.01"
+            type="text"
             inputMode="decimal"
             value={row.amount}
             onChange={(e) => changeAmount(index, e.target.value)}
@@ -169,9 +167,7 @@ export function PersonSalesBlock({
             <MidnightField
               id={`${idPrefix}-bank-${index}`}
               label="Bank sale"
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.bank}
               onChange={(e) => helpers.changeBank(setRows, index, e.target.value)}
@@ -179,9 +175,7 @@ export function PersonSalesBlock({
             <MidnightField
               id={`${idPrefix}-cash-${index}`}
               label="Cash sale"
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.cash}
               onChange={(e) => helpers.changeCash(setRows, index, e.target.value)}
@@ -243,9 +237,7 @@ export function ChequesBlock({
             <MidnightField
               id={`${idPrefix}-amt-${index}`}
               label="Cheque value"
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.amount}
               onChange={(e) => helpers.changeAmount(setRows, index, e.target.value)}

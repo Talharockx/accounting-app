@@ -747,9 +747,7 @@ export default function TransactionsPage({
                   <MidnightField
                     id="edit-m-sim-sale"
                     label="SIM sale (retail)"
-                    type="number"
-                    min={0}
-                    step="0.01"
+                    type="text"
                     inputMode="decimal"
                     value={editing.simSale}
                     onChange={(e) => {
@@ -761,9 +759,7 @@ export default function TransactionsPage({
                   <MidnightField
                     id="edit-m-sim-buy"
                     label="SIM buy (shop cost)"
-                    type="number"
-                    min={0}
-                    step="0.01"
+                    type="text"
                     inputMode="decimal"
                     value={editing.simBuy}
                     onChange={(e) => {
@@ -815,9 +811,7 @@ export default function TransactionsPage({
                   <MidnightField
                     id="edit-m-pkg-w"
                     label="R.Wind"
-                    type="number"
-                    min={0}
-                    step="0.01"
+                    type="text"
                     inputMode="decimal"
                     value={editing.packageRWind}
                     onChange={(e) => {
@@ -829,9 +823,7 @@ export default function TransactionsPage({
                   <MidnightField
                     id="edit-m-pkg-v"
                     label="R.Voda"
-                    type="number"
-                    min={0}
-                    step="0.01"
+                    type="text"
                     inputMode="decimal"
                     value={editing.packageRVoda}
                     onChange={(e) => {
@@ -878,9 +870,7 @@ export default function TransactionsPage({
                 <MidnightField
                   id="edit-m-pos"
                   label="POS (card) sales"
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
                   inputMode="decimal"
                   value={editing.posSale}
                   onChange={(e) => {

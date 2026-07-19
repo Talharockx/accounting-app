@@ -112,9 +112,7 @@ export function MerchNamedBlock({
             <MidnightField
               id={`${idPrefix}-retail-${index}`}
               label={retailLabel}
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.retail}
               onChange={(e) => helpers.changeRetail(setRows, index, e.target.value)}
@@ -122,9 +120,7 @@ export function MerchNamedBlock({
             <MidnightField
               id={`${idPrefix}-buy-${index}`}
               label={buyLabel}
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.buy}
               onChange={(e) => helpers.changeBuy(setRows, index, e.target.value)}
@@ -204,9 +200,7 @@ export function NamedLinesOnly({
             <MidnightField
               id={`${idPrefix}-a-${index}`}
               label="Amount"
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.amount}
               onChange={(e) => helpers.changeAmount(setRows, index, e.target.value)}

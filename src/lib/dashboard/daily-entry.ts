@@ -69,9 +69,19 @@ function normDesc(description: string | null) {
 }
 
 export function parseNonNegative(value: string, fallback = 0): number {
-  const n = Number.parseFloat(value);
+  const normalized = value.trim().replace(/,/g, ".");
+  const n = Number.parseFloat(normalized);
   if (Number.isNaN(n)) return fallback;
-  return Math.max(0, n);
+  return Math.max(0, roundMoney(n));
+}
+
+/**
+ * Round money to whole cents. Avoids IEEE float display bugs (e.g. 28.999999 → 29).
+ * Values are never silently changed to a different cent amount during normal entry of 29 → 29.
+ */
+export function roundMoney(amount: number): number {
+  if (!Number.isFinite(amount)) return 0;
+  return Math.round(amount * 100) / 100;
 }
 
 /**
@@ -100,9 +110,17 @@ export function sanitizeNonNegativeDecimalInput(
   return normalized;
 }
 
-/** Display helper for money inputs — blank when zero so forms don't show a default 0. */
+/**
+ * Display helper for money inputs — blank when zero so forms don't show a default 0.
+ * Formats from integer cents so values like 29 stay "29" (never float junk like "28.999999").
+ */
 export function formatMoneyInputValue(amount: number): string {
-  return amount > 0 ? String(amount) : "";
+  const n = roundMoney(amount);
+  if (n <= 0) return "";
+  const cents = Math.round(n * 100);
+  if (cents % 100 === 0) return String(cents / 100);
+  if (cents % 10 === 0) return (cents / 100).toFixed(1);
+  return (cents / 100).toFixed(2);
 }
 
 export function parseEmbeddedMetaFromDescription(description: string | null | undefined): Record<string, unknown> {
@@ -550,7 +568,7 @@ export function buildMobileDailyRows(input: MobileDailyInput): TransactionInsert
   const rows: TransactionInsert[] = [];
   const source = SOURCE_MOBILE;
 
-  const simBuy = Math.max(0, input.sim_buy);
+  const simBuy = Math.max(0, roundMoney(input.sim_buy));
   if (simBuy > 0) {
     rows.push({
       business_id: input.business_id,

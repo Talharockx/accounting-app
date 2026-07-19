@@ -136,9 +136,7 @@ export function CompanySalesBlock({
             <MidnightField
               id={`${idPrefix}-amt-${index}`}
               label="Amount"
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.amount}
               onChange={(e) => helpers.changeAmount(setRows, index, e.target.value)}
@@ -212,9 +210,7 @@ export function CompanySpesaBlock({
             <MidnightField
               id={`${idPrefix}-sp-amt-${index}`}
               label="Amount"
-              type="number"
-              min={0}
-              step="0.01"
+              type="text"
               inputMode="decimal"
               value={row.amount}
               onChange={(e) => helpers.changeAmount(setRows, index, e.target.value)}
@@ -293,9 +289,7 @@ export function RestaurantDailyEntryFields({
           <MidnightField
             id={`${idPrefix}-bank`}
             label="Bank sale"
-            type="number"
-            min={0}
-            step="0.01"
+            type="text"
             inputMode="decimal"
             value={bank}
             onChange={(e) => {
@@ -306,9 +300,7 @@ export function RestaurantDailyEntryFields({
           <MidnightField
             id={`${idPrefix}-cash`}
             label="Cash sale"
-            type="number"
-            min={0}
-            step="0.01"
+            type="text"
             inputMode="decimal"
             value={cash}
             onChange={(e) => {

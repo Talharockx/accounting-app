@@ -34,6 +34,7 @@ import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { getTodayLocalISO } from "@/lib/utils/date-range";
 import { formatCurrency } from "@/lib/utils/formatters";
 import { cn } from "@/lib/utils/cn";
+import { mapTransactionRows } from "@/lib/supabase/map-transactions";
 import { supabase } from "@/lib/supabaseClient";
 import {
   MerchNamedBlock,
@@ -82,14 +83,6 @@ import { isBlankNote } from "@/lib/utils/rich-text";
 type BusinessRow = {
   id: string;
   business_type: BusinessType;
-};
-
-type TxRecord = {
-  amount: number;
-  transaction_type: "sale" | "expense" | "repair";
-  description: string | null;
-  transaction_date: string;
-  metadata: unknown;
 };
 
 export default function DailyEntryPage({
@@ -250,7 +243,7 @@ export default function DailyEntryPage({
   );
 
   const hydrateForms = useCallback(
-    (bt: BusinessType, rows: TxRecord[], dateISO: string) => {
+    (bt: BusinessType, rows: ReturnType<typeof mapTransactionRows>, dateISO: string) => {
       const dayRows = rows.filter((row) => row.transaction_date === dateISO);
 
       if (bt === "restaurant") {
@@ -295,7 +288,7 @@ export default function DailyEntryPage({
           return;
         }
 
-        const rows = (data ?? []) as TxRecord[];
+        const rows = mapTransactionRows(data ?? []);
         if (shouldHydrate) {
           hydrateForms(bt, rows, dateISO);
         }
@@ -822,9 +815,7 @@ export default function DailyEntryPage({
                     <MidnightField
                       id="grocery-bank"
                       label="Bank sale"
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
                       inputMode="decimal"
                       value={groceryBank}
                       onChange={(e) => clampInput(e.target.value, setGroceryBank)}
@@ -832,9 +823,7 @@ export default function DailyEntryPage({
                     <MidnightField
                       id="grocery-cash"
                       label="Cash sale"
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
                       inputMode="decimal"
                       value={groceryCash}
                       onChange={(e) => clampInput(e.target.value, setGroceryCash)}
@@ -862,9 +851,7 @@ export default function DailyEntryPage({
                 <MidnightField
                   id="grocery-cash-expense"
                   label="Cash expense"
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
                   inputMode="decimal"
                   value={groceryCashExpense}
                   onChange={(e) => clampInput(e.target.value, setGroceryCashExpense)}
@@ -873,9 +860,7 @@ export default function DailyEntryPage({
                 <MidnightField
                   id="grocery-bank-expense"
                   label="Bank expense"
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
                   inputMode="decimal"
                   value={groceryBankExpense}
                   onChange={(e) => clampInput(e.target.value, setGroceryBankExpense)}
@@ -924,9 +909,7 @@ export default function DailyEntryPage({
                     <MidnightField
                       id="sim-sale"
                       label="SIM sale (retail)"
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
                       inputMode="decimal"
                       value={simSale}
                       onChange={(e) => clampInput(e.target.value, setSimSale)}
@@ -934,9 +917,7 @@ export default function DailyEntryPage({
                     <MidnightField
                       id="sim-buy"
                       label="SIM buy (shop cost)"
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
                       inputMode="decimal"
                       value={simBuy}
                       onChange={(e) => clampInput(e.target.value, setSimBuy)}
@@ -973,9 +954,7 @@ export default function DailyEntryPage({
                     <MidnightField
                       id="pkg-wind"
                       label="R.Wind"
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
                       inputMode="decimal"
                       value={packageRWind}
                       onChange={(e) => clampInput(e.target.value, setPackageRWind)}
@@ -983,9 +962,7 @@ export default function DailyEntryPage({
                     <MidnightField
                       id="pkg-voda"
                       label="R.Voda"
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
                       inputMode="decimal"
                       value={packageRVoda}
                       onChange={(e) => clampInput(e.target.value, setPackageRVoda)}
@@ -1019,9 +996,7 @@ export default function DailyEntryPage({
                   <MidnightField
                     id="pos-sale"
                     label="POS (card) sales"
-                    type="number"
-                    min={0}
-                    step="0.01"
+                    type="text"
                     inputMode="decimal"
                     value={posSale}
                     onChange={(e) => clampInput(e.target.value, setPosSale)}
