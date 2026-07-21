@@ -77,13 +77,13 @@ function CashBalanceSection({
   cashExpense: number;
 }) {
   return (
-    <Section title="Cash" hint="Cash sale minus cash expense for this date.">
+    <Section title="Cash" hint="Last Balance (Cash) = Cash sale − Cash expense.">
       <StatGrid
         items={[
           { label: "Cash sale", value: formatCurrency(cashSale) },
           { label: "Cash expense", value: formatCurrency(cashExpense) },
           {
-            label: "Cash sale − Cash expense",
+            label: "Last Balance (Cash)",
             value: formatCurrency(cashSale - cashExpense),
           },
         ]}
@@ -104,13 +104,13 @@ function BankBalanceSection({
   bankSaleLabel?: string;
 }) {
   return (
-    <Section title="Bank" hint="Bank sale minus bank expense for this date.">
+    <Section title="Bank" hint="Last Balance (Bank) = Bank sale − Bank expense.">
       <StatGrid
         items={[
           { label: bankSaleLabel, value: formatCurrency(bankSale) },
           { label: "Bank expense", value: formatCurrency(bankExpense) },
           {
-            label: "Bank sale − Bank expense",
+            label: "Last Balance (Bank)",
             value: formatCurrency(bankSale - bankExpense),
           },
         ]}

@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { AddBusinessSection, type BusinessType } from "@/components/dashboard/add-business-section";
 import { BusinessesNav } from "@/components/dashboard/businesses-nav";
 import { BentoCell } from "@/components/ui/bento-cell";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { MidnightField } from "@/components/ui/midnight-field";
+import { PressableButton } from "@/components/ui/pressable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { businessTypeLabel, businessTypePlural, normalizeBusinessType } from "@/lib/business-types";
@@ -66,6 +69,14 @@ export default function DashboardPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [signOutConfirm, setSignOutConfirm] = useState(false);
   const [businessToDelete, setBusinessToDelete] = useState<Business | null>(null);
+  const [businessToEdit, setBusinessToEdit] = useState<Business | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editVat, setEditVat] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editType, setEditType] = useState<BusinessType>("restaurant");
+  const [editSaving, setEditSaving] = useState(false);
 
   const hasBusinesses = businesses.length > 0;
 
@@ -263,6 +274,72 @@ export default function DashboardPage() {
     }
   };
 
+  const openEditBusiness = (business: Business) => {
+    setBusinessToEdit(business);
+    setEditName(business.name);
+    setEditPhone(business.phone_number);
+    setEditVat(business.vat_number);
+    setEditAddress(business.address);
+    setEditEmail(business.contact_email);
+    setEditType(business.business_type);
+  };
+
+  const closeEditBusiness = () => {
+    if (editSaving) return;
+    setBusinessToEdit(null);
+  };
+
+  const handleSaveBusinessEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!businessToEdit) return;
+    if (!editName.trim()) {
+      toast.error("Business name is required.");
+      return;
+    }
+    if (!editPhone.trim() || !editVat.trim() || !editAddress.trim() || !editEmail.trim()) {
+      toast.error("Fill in phone, VAT, address, and email.");
+      return;
+    }
+
+    setEditSaving(true);
+    setError("");
+    try {
+      const { error: updateError } = await supabase
+        .from("businesses")
+        .update({
+          name: editName.trim(),
+          business_type: editType,
+          phone_number: editPhone.trim(),
+          vat_number: editVat.trim(),
+          address: editAddress.trim(),
+          contact_email: editEmail.trim(),
+        })
+        .eq("id", businessToEdit.id);
+
+      if (updateError) {
+        const msg = getUserFriendlyError(new Error(updateError.message));
+        setError(msg);
+        toast.error(msg);
+        setEditSaving(false);
+        return;
+      }
+
+      toast.success("Business details updated.");
+      setBusinessToEdit(null);
+      if (ownerUserId) {
+        await loadBusinesses(ownerUserId);
+      }
+      if (modularWorkspaceType && modularWorkspaceType !== editType) {
+        setModularWorkspaceType(editType);
+      }
+    } catch (caught) {
+      const msg = getUserFriendlyError(caught);
+      setError(msg);
+      toast.error(msg);
+    }
+    setEditSaving(false);
+  };
+
   return (
     <main className="lv-dashboard-canvas min-h-screen text-[var(--foreground)] pb-16">
       <div className="lv-dashboard-mesh-bg" aria-hidden>
@@ -456,6 +533,20 @@ export default function DashboardPage() {
                       <div className="flex items-center justify-end gap-2 border-t border-[color-mix(in_srgb,var(--lv-glass-edge)_42%,transparent)] px-5 py-3.5">
                         <button
                           type="button"
+                          disabled={editSaving || deletingId === business.id}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            openEditBusiness(business);
+                          }}
+                          className={cn(
+                            "rounded-[0.75rem] border border-[color-mix(in_srgb,var(--lv-accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--lv-accent)_12%,transparent)] px-3.5 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--lv-accent)] transition hover:bg-[color-mix(in_srgb,var(--lv-accent)_20%,transparent)]",
+                            "disabled:cursor-not-allowed disabled:opacity-50",
+                          )}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
                           disabled={deletingId === business.id}
                           onClick={(event) => {
                             event.preventDefault();
@@ -534,6 +625,171 @@ export default function DashboardPage() {
           })();
         }}
       />
+
+      {businessToEdit ? (
+        <EditBusinessDialog
+          open
+          busy={editSaving}
+          name={editName}
+          phone={editPhone}
+          vat={editVat}
+          address={editAddress}
+          email={editEmail}
+          businessType={editType}
+          onNameChange={setEditName}
+          onPhoneChange={setEditPhone}
+          onVatChange={setEditVat}
+          onAddressChange={setEditAddress}
+          onEmailChange={setEditEmail}
+          onTypeChange={setEditType}
+          onCancel={closeEditBusiness}
+          onSubmit={handleSaveBusinessEdit}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function EditBusinessDialog({
+  open,
+  busy,
+  name,
+  phone,
+  vat,
+  address,
+  email,
+  businessType,
+  onNameChange,
+  onPhoneChange,
+  onVatChange,
+  onAddressChange,
+  onEmailChange,
+  onTypeChange,
+  onCancel,
+  onSubmit,
+}: {
+  open: boolean;
+  busy: boolean;
+  name: string;
+  phone: string;
+  vat: string;
+  address: string;
+  email: string;
+  businessType: BusinessType;
+  onNameChange: (value: string) => void;
+  onPhoneChange: (value: string) => void;
+  onVatChange: (value: string) => void;
+  onAddressChange: (value: string) => void;
+  onEmailChange: (value: string) => void;
+  onTypeChange: (value: BusinessType) => void;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex min-h-0 items-center justify-center overflow-y-auto overscroll-contain p-4 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-business-dialog-title"
+    >
+      <button
+        type="button"
+        className="fixed inset-0 cursor-pointer bg-black/68 backdrop-blur-sm"
+        aria-label="Close dialog"
+        onClick={busy ? undefined : onCancel}
+      />
+      <div className="relative z-10 my-auto w-full max-w-lg shrink-0 rounded-2xl border border-[#ffffff10] bg-[#151921]/95 p-6 shadow-2xl shadow-black/55 backdrop-blur-md">
+        <h2 id="edit-business-dialog-title" className="text-lg font-semibold text-[var(--lv-heading)]">
+          Edit business
+        </h2>
+        <p className="mt-2 text-sm text-[var(--lv-muted-strong)]">
+          Correct name, contact details, or business type if something was entered wrong.
+        </p>
+        <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="edit-business-type" className="text-xs font-semibold text-[var(--lv-muted-strong)]">
+              Business type
+            </label>
+            <select
+              id="edit-business-type"
+              value={businessType}
+              disabled={busy}
+              onChange={(e) => onTypeChange(e.target.value as BusinessType)}
+              className="lv-input rounded-xl"
+            >
+              <option value="restaurant">Restaurant</option>
+              <option value="mobile_shop">Mobile shop</option>
+              <option value="grocery">Grocery</option>
+            </select>
+          </div>
+          <MidnightField
+            id="edit-business-name"
+            label="Business name"
+            type="text"
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            required
+            disabled={busy}
+            autoComplete="organization"
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <MidnightField
+              id="edit-business-phone"
+              label="Phone number"
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => onPhoneChange(e.target.value)}
+              required
+              disabled={busy}
+            />
+            <MidnightField
+              id="edit-business-vat"
+              label="VAT number"
+              type="text"
+              value={vat}
+              onChange={(e) => onVatChange(e.target.value)}
+              required
+              disabled={busy}
+            />
+          </div>
+          <MidnightField
+            id="edit-business-address"
+            label="Address"
+            rows={3}
+            value={address}
+            onChange={(e) => onAddressChange(e.target.value)}
+            required
+            disabled={busy}
+          />
+          <MidnightField
+            id="edit-business-email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+            required
+            disabled={busy}
+          />
+          <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <PressableButton type="button" variant="secondary" className="min-h-12 w-full sm:w-auto" disabled={busy} onClick={onCancel}>
+              Cancel
+            </PressableButton>
+            <PressableButton type="submit" className="min-h-12 w-full sm:w-auto" disabled={busy}>
+              {busy ? "Saving…" : "Save changes"}
+            </PressableButton>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
   );
 }

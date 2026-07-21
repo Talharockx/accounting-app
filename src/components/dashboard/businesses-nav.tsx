@@ -19,6 +19,8 @@ export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onAddGrocery, 
   const onNotebookPlus =
     pathname === "/dashboard/notebook-plus" || pathname.startsWith("/dashboard/notebook-plus/");
   const onBusinessesHome = pathname === "/dashboard";
+  const onBusinessDetails =
+    pathname === "/dashboard/business-details" || pathname.startsWith("/dashboard/business-details/");
 
   const pillIdle =
     "inline-flex min-h-12 shrink-0 cursor-pointer touch-manipulation items-center rounded-[0.875rem] border border-[#ffffff10] px-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--lv-muted-strong)] transition-[transform,opacity] hover:border-[#ffffff24] hover:text-[var(--lv-heading)] active:scale-[0.98]";
@@ -43,6 +45,9 @@ export function BusinessesNav({ onAddRestaurant, onAddMobileShop, onAddGrocery, 
           <nav aria-label="Main" className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             <Link href="/dashboard" className={onBusinessesHome ? pillAccent : pillIdle}>
               My businesses
+            </Link>
+            <Link href="/dashboard/business-details" className={onBusinessDetails ? pillAccent : pillIdle}>
+              Business details
             </Link>
             <button type="button" onClick={onAddRestaurant} className={pillIdle}>
               Add restaurant
