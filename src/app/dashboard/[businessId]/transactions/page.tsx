@@ -46,6 +46,7 @@ import {
   insertTransactionsWithMetadataFallback,
   selectWithMetadataColumnFallback,
 } from "@/lib/dashboard/transaction-metadata-fallback";
+import { deleteDailyEntryDayRows } from "@/lib/dashboard/delete-daily-entry-day";
 import { getUserFriendlyError } from "@/lib/errors";
 import {
   getMonthBoundariesISO,
@@ -302,20 +303,16 @@ export default function TransactionsPage({
   const runDeleteDay = async (date: string) => {
     setDeletingDate(date);
     setError("");
-    const { error: delError } = await supabase
-      .from("transactions")
-      .delete()
-      .eq("business_id", businessId)
-      .eq("transaction_date", date);
+    const { error: delError } = await deleteDailyEntryDayRows(supabase, businessId, date);
 
     setDeletingDate(null);
     if (delError) {
-      const msg = getUserFriendlyError(new Error(delError.message));
+      const msg = getUserFriendlyError(delError);
       setError(msg);
       toast.error(msg);
       return;
     }
-    toast.success(`All entries for ${date} were deleted.`);
+    toast.success(`Daily Entry rows for ${date} were deleted. Notebook / Notes+ rows were kept.`);
     await loadData(businessId, monthInput);
   };
 
@@ -343,16 +340,22 @@ export default function TransactionsPage({
 
     const { originalDate, date: targetDate } = editing;
 
-    const { error: delError } = await supabase
-      .from("transactions")
-      .delete()
-      .eq("business_id", businessId)
-      .eq("transaction_date", originalDate);
-
-    if (delError) {
+    const { error: delOriginalError } = await deleteDailyEntryDayRows(supabase, businessId, originalDate);
+    if (delOriginalError) {
       setSaving(false);
-      setError(delError.message);
+      setError(delOriginalError.message);
+      toast.error(getUserFriendlyError(delOriginalError));
       return;
+    }
+
+    if (targetDate !== originalDate) {
+      const { error: delTargetError } = await deleteDailyEntryDayRows(supabase, businessId, targetDate);
+      if (delTargetError) {
+        setSaving(false);
+        setError(delTargetError.message);
+        toast.error(getUserFriendlyError(delTargetError));
+        return;
+      }
     }
 
     try {

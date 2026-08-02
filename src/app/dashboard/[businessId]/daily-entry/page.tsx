@@ -30,6 +30,7 @@ import {
   insertTransactionsWithMetadataFallback,
   selectWithMetadataColumnFallback,
 } from "@/lib/dashboard/transaction-metadata-fallback";
+import { deleteDailyEntryDayRows } from "@/lib/dashboard/delete-daily-entry-day";
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { getTodayLocalISO } from "@/lib/utils/date-range";
 import { formatCurrency } from "@/lib/utils/formatters";
@@ -633,14 +634,10 @@ export default function DailyEntryPage({
     }
 
     try {
-      const { error: deleteError } = await supabase
-        .from("transactions")
-        .delete()
-        .eq("business_id", businessId)
-        .eq("transaction_date", entryDate);
+      const { error: deleteError } = await deleteDailyEntryDayRows(supabase, businessId, entryDate);
 
       if (deleteError) {
-        const msg = getUserFriendlyError(new Error(deleteError.message));
+        const msg = getUserFriendlyError(deleteError);
         setError(msg);
         toast.error(msg);
         setSaving(false);

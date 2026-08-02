@@ -43,6 +43,7 @@ import { mapTransactionListRows } from "@/lib/supabase/map-transactions";
 import {
   getMonthBoundariesISO,
   getTodayLocalISO,
+  minISODate,
   parseMonthInputValue,
   toMonthInputValue,
 } from "@/lib/utils/date-range";
@@ -135,6 +136,16 @@ export default function NotebookPlusPage() {
     if (!parsedMonth) return null;
     return getMonthBoundariesISO(parsedMonth.year, parsedMonth.monthIndex);
   }, [parsedMonth]);
+
+  /** Keep add-row date inside the viewed month so entries are not saved into the wrong month. */
+  useEffect(() => {
+    if (!monthRange || editingId) return;
+    if (rowDate >= monthRange.start && rowDate <= monthRange.end) return;
+    const today = getTodayLocalISO();
+    setRowDate(
+      today >= monthRange.start && today <= monthRange.end ? today : monthRange.end,
+    );
+  }, [monthRange, editingId, rowDate]);
 
   const selectedKhata = useMemo(
     () => khatas.find((k) => k.id === selectedKhataId) ?? null,
@@ -270,7 +281,14 @@ export default function NotebookPlusPage() {
 
   const resetForm = () => {
     setEditingId(null);
-    setRowDate(getTodayLocalISO());
+    if (monthRange) {
+      const today = getTodayLocalISO();
+      setRowDate(
+        today >= monthRange.start && today <= monthRange.end ? today : monthRange.end,
+      );
+    } else {
+      setRowDate(getTodayLocalISO());
+    }
     setRowAmount("");
     setRowPaid("");
     setRowDetails("");
@@ -701,7 +719,8 @@ export default function NotebookPlusPage() {
                   id="np-date"
                   label="Date"
                   type="date"
-                  max={todayISO}
+                  min={monthRange?.start}
+                  max={monthRange ? minISODate(monthRange.end, todayISO) : todayISO}
                   required
                   value={rowDate}
                   onChange={(e) => setRowDate(e.target.value)}

@@ -18,9 +18,7 @@ import {
   formatMoneyOrBlank,
   ledgerRowMetadataPatch,
   newLedgerKhataId,
-  openingBalanceBefore,
   parseLedgerMoneyInput,
-  rowsInRange,
   withRunningBalances,
   type LedgerKhata,
   type LedgerNotebookRow,
@@ -35,10 +33,7 @@ import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { downloadLedgerNotebookPdf } from "@/lib/reports/ledger-notebook-pdf";
 import { mapTransactionListRows } from "@/lib/supabase/map-transactions";
 import {
-  getMonthBoundariesISO,
   getTodayLocalISO,
-  parseMonthInputValue,
-  toMonthInputValue,
 } from "@/lib/utils/date-range";
 import { cn } from "@/lib/utils/cn";
 import { supabase } from "@/lib/supabaseClient";
@@ -47,13 +42,6 @@ function formatHeadingDate(iso: string): string {
   const [y, mo, d] = iso.split("-");
   if (!y || !mo || !d) return iso;
   return `${d.padStart(2, "0")}/${mo.padStart(2, "0")}/${y}`;
-}
-
-function calendarMonthHeading(year: number, monthIndex: number): string {
-  return new Date(year, monthIndex, 15).toLocaleString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
 }
 
 export default function LedgerNotebookPage({
@@ -74,10 +62,6 @@ export default function LedgerNotebookPage({
   const [selectedKhataId, setSelectedKhataId] = useState<string | null>(null);
   const [newKhataName, setNewKhataName] = useState("");
   const [allRows, setAllRows] = useState<LedgerNotebookRow[]>([]);
-
-  const [monthInput, setMonthInput] = useState(() =>
-    toMonthInputValue(new Date().getFullYear(), new Date().getMonth()),
-  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [rowDate, setRowDate] = useState(() => getTodayLocalISO());
@@ -123,13 +107,6 @@ export default function LedgerNotebookPage({
     };
   }, [params]);
 
-  const parsedMonth = useMemo(() => parseMonthInputValue(monthInput), [monthInput]);
-
-  const monthRange = useMemo(() => {
-    if (!parsedMonth) return null;
-    return getMonthBoundariesISO(parsedMonth.year, parsedMonth.monthIndex);
-  }, [parsedMonth]);
-
   const selectedKhata = useMemo(
     () => khatas.find((k) => k.id === selectedKhataId) ?? null,
     [khatas, selectedKhataId],
@@ -141,14 +118,12 @@ export default function LedgerNotebookPage({
     setError("");
     const notesOr = `description.like.Ledger Notebook%`;
     try {
-      const endCap = monthRange?.end ?? getTodayLocalISO();
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>
           await supabase
             .from("transactions")
             .select("id, business_id, amount, transaction_type, description, transaction_date, metadata")
             .eq("business_id", businessId)
-            .lte("transaction_date", endCap)
             .or(notesOr)
             .order("transaction_date", { ascending: true })
             .limit(5000),
@@ -157,7 +132,6 @@ export default function LedgerNotebookPage({
             .from("transactions")
             .select("id, business_id, amount, transaction_type, description, transaction_date")
             .eq("business_id", businessId)
-            .lte("transaction_date", endCap)
             .or(notesOr)
             .order("transaction_date", { ascending: true })
             .limit(5000),
@@ -190,7 +164,7 @@ export default function LedgerNotebookPage({
     } finally {
       setLoading(false);
     }
-  }, [businessId, monthRange, selectedKhataId]);
+  }, [businessId, selectedKhataId]);
 
   useEffect(() => {
     if (!businessId) return;
@@ -198,15 +172,24 @@ export default function LedgerNotebookPage({
     return () => window.clearTimeout(id);
   }, [businessId, loadNotebook]);
 
-  const opening = useMemo(
-    () => (monthRange ? openingBalanceBefore(allRows, monthRange.start) : 0),
-    [allRows, monthRange],
-  );
+  /** Full khata history with running balance (no monthly filter). */
+  const ledgerRows = useMemo((): LedgerNotebookRowWithBalance[] => {
+    if (!selectedKhataId) return [];
+    return withRunningBalances(allRows, 0);
+  }, [allRows, selectedKhataId]);
 
-  const monthRows = useMemo((): LedgerNotebookRowWithBalance[] => {
-    if (!monthRange || !selectedKhataId) return [];
-    return withRunningBalances(rowsInRange(allRows, monthRange.start, monthRange.end), opening);
-  }, [allRows, monthRange, opening, selectedKhataId]);
+  const ledgerTotals = useMemo(() => {
+    const summed = ledgerRows.reduce(
+      (acc, row) => ({
+        amount: acc.amount + (row.amount > 0 ? row.amount : 0),
+        paid: acc.paid + (row.paid > 0 ? row.paid : 0),
+      }),
+      { amount: 0, paid: 0 },
+    );
+    const closingBalance =
+      ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1]!.balance : 0;
+    return { ...summed, balance: closingBalance };
+  }, [ledgerRows]);
 
   // Refresh balances for list cards when listing.
   const [listBalances, setListBalances] = useState<Record<string, number>>({});
@@ -247,12 +230,6 @@ export default function LedgerNotebookPage({
       cancelled = true;
     };
   }, [businessId, selectedKhataId, khatas.length]);
-
-  const periodTitle = parsedMonth
-    ? calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex)
-    : "";
-  const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
-  const todayISO = getTodayLocalISO();
 
   const resetForm = () => {
     setEditingId(null);
@@ -434,19 +411,8 @@ export default function LedgerNotebookPage({
         toast.success("Notebook row saved.");
       }
 
-      const savedDate = rowDate;
       resetForm();
-      const [y, m] = savedDate.split("-");
-      if (y && m) {
-        const nextMonth = `${y}-${m}`;
-        if (nextMonth !== monthInput) {
-          setMonthInput(nextMonth);
-        } else {
-          await loadNotebook();
-        }
-      } else {
-        await loadNotebook();
-      }
+      await loadNotebook();
     } catch (caught) {
       toast.error(getUserFriendlyError(caught));
     } finally {
@@ -473,15 +439,15 @@ export default function LedgerNotebookPage({
   };
 
   const handleDownloadPdf = async () => {
-    if (!businessName || !periodTitle || !selectedKhata) return;
+    if (!businessName || !selectedKhata) return;
     setPdfBusy(true);
     try {
       await downloadLedgerNotebookPdf({
         businessName,
         khataName: selectedKhata.name,
-        periodTitle,
-        openingBalance: opening,
-        rows: monthRows,
+        periodTitle: "All entries",
+        openingBalance: 0,
+        rows: ledgerRows,
       });
       toast.success("Notebook PDF downloaded.");
     } catch (caught) {
@@ -624,21 +590,9 @@ export default function LedgerNotebookPage({
               {selectedKhata?.name ?? "Notebook"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--lv-muted-strong)]">
-              Date, Amount, Paid, Balance, Details — balance = previous + Amount − Paid.
+              Date, Amount, Paid, Balance, Details — balance = previous + Amount − Paid. Pick any date
+              from the calendar.
             </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:items-end">
-            <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor="ledger-month">
-              View month
-            </label>
-            <input
-              id="ledger-month"
-              type="month"
-              max={maxMonthInput}
-              value={monthInput}
-              onChange={(e) => setMonthInput(e.target.value)}
-              className="lv-tabular-mono rounded-xl border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-surface-muted)] px-3 py-2.5 text-sm text-[var(--lv-heading)] outline-none focus:border-[color-mix(in_srgb,var(--lv-accent)_48%,transparent)] dark:bg-white/[0.07]"
-            />
           </div>
         </div>
       </motion.div>
@@ -655,7 +609,6 @@ export default function LedgerNotebookPage({
             id="ledger-date"
             label="Date"
             type="date"
-            max={todayISO}
             required
             value={rowDate}
             onChange={(e) => setRowDate(e.target.value)}
@@ -706,9 +659,7 @@ export default function LedgerNotebookPage({
       <div className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-[var(--lv-heading)]">
-              {periodTitle || "Notebook"}
-            </h2>
+            <h2 className="text-lg font-semibold text-[var(--lv-heading)]">All entries</h2>
           </div>
           <PressableButton
             type="button"
@@ -744,14 +695,14 @@ export default function LedgerNotebookPage({
                 </tr>
               </thead>
               <tbody>
-                {monthRows.length === 0 ? (
+                {ledgerRows.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-[var(--lv-muted-strong)]">
-                      No rows this month for this khata. Add one above.
+                      No rows for this khata yet. Add one above — any calendar date.
                     </td>
                   </tr>
                 ) : (
-                  monthRows.map((row) => (
+                  ledgerRows.map((row) => (
                     <tr
                       key={row.id || `${row.date}-${row.sortIndex}`}
                       className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_28%,transparent)] last:border-0"
@@ -804,6 +755,34 @@ export default function LedgerNotebookPage({
                   ))
                 )}
               </tbody>
+              {ledgerRows.length > 0 ? (
+                <tfoot>
+                  <tr className="border-t-2 border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_75%,transparent)] font-semibold text-[var(--lv-heading)]">
+                    <th
+                      scope="row"
+                      className="whitespace-nowrap px-3 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-[var(--lv-accent)]"
+                    >
+                      Grand total
+                    </th>
+                    <td className="whitespace-nowrap px-3 py-3.5 text-right">
+                      {formatLedgerMoney(ledgerTotals.amount)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3.5 text-right">
+                      {formatLedgerMoney(ledgerTotals.paid)}
+                    </td>
+                    <td
+                      className={cn(
+                        "whitespace-nowrap px-3 py-3.5 text-right",
+                        ledgerTotals.balance < 0 && "text-[var(--lv-traffic-critical)]",
+                      )}
+                    >
+                      {formatLedgerMoney(ledgerTotals.balance)}
+                    </td>
+                    <td className="px-3 py-3.5" />
+                    <td className="px-3 py-3.5" />
+                  </tr>
+                </tfoot>
+              ) : null}
             </table>
           </div>
         )}
