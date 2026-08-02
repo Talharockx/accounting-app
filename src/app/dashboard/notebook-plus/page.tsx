@@ -23,9 +23,7 @@ import {
   formatMoneyOrBlank,
   newNotebookPlusKhataId,
   notebookPlusRowMetadataPatch,
-  openingBalanceBefore,
   parseLedgerMoneyInput,
-  rowsInRange,
   withRunningBalances,
   type NotebookPlusKhata,
   type NotebookPlusRow,
@@ -40,13 +38,7 @@ import {
 import { SYSTEM_UNAVAILABLE, getUserFriendlyError } from "@/lib/errors";
 import { downloadLedgerNotebookPdf } from "@/lib/reports/ledger-notebook-pdf";
 import { mapTransactionListRows } from "@/lib/supabase/map-transactions";
-import {
-  getMonthBoundariesISO,
-  getTodayLocalISO,
-  minISODate,
-  parseMonthInputValue,
-  toMonthInputValue,
-} from "@/lib/utils/date-range";
+import { getTodayLocalISO } from "@/lib/utils/date-range";
 import { cn } from "@/lib/utils/cn";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -54,13 +46,6 @@ function formatHeadingDate(iso: string): string {
   const [y, mo, d] = iso.split("-");
   if (!y || !mo || !d) return iso;
   return `${d.padStart(2, "0")}/${mo.padStart(2, "0")}/${y}`;
-}
-
-function calendarMonthHeading(year: number, monthIndex: number): string {
-  return new Date(year, monthIndex, 15).toLocaleString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
 }
 
 export default function NotebookPlusPage() {
@@ -78,10 +63,6 @@ export default function NotebookPlusPage() {
   const [selectedKhataId, setSelectedKhataId] = useState<string | null>(null);
   const [newKhataName, setNewKhataName] = useState("");
   const [allRows, setAllRows] = useState<NotebookPlusRow[]>([]);
-
-  const [monthInput, setMonthInput] = useState(() =>
-    toMonthInputValue(new Date().getFullYear(), new Date().getMonth()),
-  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [rowDate, setRowDate] = useState(() => getTodayLocalISO());
@@ -130,23 +111,6 @@ export default function NotebookPlusPage() {
     };
   }, [router]);
 
-  const parsedMonth = useMemo(() => parseMonthInputValue(monthInput), [monthInput]);
-
-  const monthRange = useMemo(() => {
-    if (!parsedMonth) return null;
-    return getMonthBoundariesISO(parsedMonth.year, parsedMonth.monthIndex);
-  }, [parsedMonth]);
-
-  /** Keep add-row date inside the viewed month so entries are not saved into the wrong month. */
-  useEffect(() => {
-    if (!monthRange || editingId) return;
-    if (rowDate >= monthRange.start && rowDate <= monthRange.end) return;
-    const today = getTodayLocalISO();
-    setRowDate(
-      today >= monthRange.start && today <= monthRange.end ? today : monthRange.end,
-    );
-  }, [monthRange, editingId, rowDate]);
-
   const selectedKhata = useMemo(
     () => khatas.find((k) => k.id === selectedKhataId) ?? null,
     [khatas, selectedKhataId],
@@ -158,14 +122,12 @@ export default function NotebookPlusPage() {
     setError("");
     const notesOr = `description.like.${DESC_NOTEBOOK_PLUS}%,description.like.${DESC_NOTEBOOK_PLUS_KHATA}%`;
     try {
-      const endCap = monthRange?.end ?? getTodayLocalISO();
       const { data, error: fetchError } = await selectWithMetadataColumnFallback(
         async () =>
           await supabase
             .from("transactions")
             .select("id, business_id, amount, transaction_type, description, transaction_date, metadata")
             .eq("business_id", businessId)
-            .lte("transaction_date", endCap)
             .or(notesOr)
             .order("transaction_date", { ascending: true })
             .limit(5000),
@@ -174,7 +136,6 @@ export default function NotebookPlusPage() {
             .from("transactions")
             .select("id, business_id, amount, transaction_type, description, transaction_date")
             .eq("business_id", businessId)
-            .lte("transaction_date", endCap)
             .or(notesOr)
             .order("transaction_date", { ascending: true })
             .limit(5000),
@@ -207,7 +168,7 @@ export default function NotebookPlusPage() {
     } finally {
       setLoading(false);
     }
-  }, [businessId, monthRange, selectedKhataId]);
+  }, [businessId, selectedKhataId]);
 
   useEffect(() => {
     if (!businessId) return;
@@ -260,35 +221,28 @@ export default function NotebookPlusPage() {
     };
   }, [businessId, selectedKhataId, khatas.length]);
 
-  const opening = useMemo(() => {
-    if (!monthRange) return 0;
-    return openingBalanceBefore(allRows, monthRange.start);
-  }, [allRows, monthRange]);
+  /** Full khata history with running balance (no monthly filter). */
+  const ledgerRows = useMemo((): NotebookPlusRowWithBalance[] => {
+    if (!selectedKhataId) return [];
+    return withRunningBalances(allRows, 0);
+  }, [allRows, selectedKhataId]);
 
-  const monthRows: NotebookPlusRowWithBalance[] = useMemo(() => {
-    if (!monthRange) return [];
-    const inMonth = rowsInRange(allRows, monthRange.start, monthRange.end);
-    return withRunningBalances(inMonth, opening);
-  }, [allRows, monthRange, opening]);
-
-  const periodTitle = useMemo(() => {
-    if (!parsedMonth) return "";
-    return calendarMonthHeading(parsedMonth.year, parsedMonth.monthIndex);
-  }, [parsedMonth]);
-
-  const todayISO = getTodayLocalISO();
-  const maxMonthInput = toMonthInputValue(new Date().getFullYear(), new Date().getMonth());
+  const ledgerTotals = useMemo(() => {
+    const summed = ledgerRows.reduce(
+      (acc, row) => ({
+        amount: acc.amount + (row.amount > 0 ? row.amount : 0),
+        paid: acc.paid + (row.paid > 0 ? row.paid : 0),
+      }),
+      { amount: 0, paid: 0 },
+    );
+    const closingBalance =
+      ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1]!.balance : 0;
+    return { ...summed, balance: closingBalance };
+  }, [ledgerRows]);
 
   const resetForm = () => {
     setEditingId(null);
-    if (monthRange) {
-      const today = getTodayLocalISO();
-      setRowDate(
-        today >= monthRange.start && today <= monthRange.end ? today : monthRange.end,
-      );
-    } else {
-      setRowDate(getTodayLocalISO());
-    }
+    setRowDate(getTodayLocalISO());
     setRowAmount("");
     setRowPaid("");
     setRowDetails("");
@@ -467,19 +421,8 @@ export default function NotebookPlusPage() {
         toast.success("Notebook+ row saved.");
       }
 
-      const savedDate = rowDate;
       resetForm();
-      const [y, m] = savedDate.split("-");
-      if (y && m) {
-        const nextMonth = `${y}-${m}`;
-        if (nextMonth !== monthInput) {
-          setMonthInput(nextMonth);
-        } else {
-          await loadNotebookPlus();
-        }
-      } else {
-        await loadNotebookPlus();
-      }
+      await loadNotebookPlus();
     } catch (caught) {
       toast.error(getUserFriendlyError(caught));
     } finally {
@@ -506,15 +449,15 @@ export default function NotebookPlusPage() {
   };
 
   const handleDownloadPdf = async () => {
-    if (!periodTitle || !selectedKhata) return;
+    if (!selectedKhata) return;
     setPdfBusy(true);
     try {
       await downloadLedgerNotebookPdf({
         businessName: "Notebook+",
         khataName: selectedKhata.name,
-        periodTitle,
-        openingBalance: opening,
-        rows: monthRows,
+        periodTitle: "All entries",
+        openingBalance: 0,
+        rows: ledgerRows,
       });
       toast.success("Notebook+ PDF downloaded.");
     } catch (caught) {
@@ -688,21 +631,9 @@ export default function NotebookPlusPage() {
                     {selectedKhata?.name ?? "Notebook+"}
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm text-[var(--lv-muted-strong)]">
-                    Date, Amount, Paid, Balance, Details — balance = previous + Amount − Paid.
+                    Date, Amount, Paid, Balance, Details — balance = previous + Amount − Paid. Pick any
+                    date from the calendar.
                   </p>
-                </div>
-                <div className="flex flex-col gap-2 sm:items-end">
-                  <label className="text-xs font-semibold text-[var(--lv-muted)]" htmlFor="np-month">
-                    View month
-                  </label>
-                  <input
-                    id="np-month"
-                    type="month"
-                    max={maxMonthInput}
-                    value={monthInput}
-                    onChange={(e) => setMonthInput(e.target.value)}
-                    className="lv-tabular-mono rounded-xl border border-[color-mix(in_srgb,var(--lv-glass-edge)_45%,transparent)] bg-[var(--lv-surface-muted)] px-3 py-2.5 text-sm text-[var(--lv-heading)] outline-none focus:border-[color-mix(in_srgb,var(--lv-accent)_48%,transparent)] dark:bg-white/[0.07]"
-                  />
                 </div>
               </div>
             </motion.div>
@@ -719,8 +650,6 @@ export default function NotebookPlusPage() {
                   id="np-date"
                   label="Date"
                   type="date"
-                  min={monthRange?.start}
-                  max={monthRange ? minISODate(monthRange.end, todayISO) : todayISO}
                   required
                   value={rowDate}
                   onChange={(e) => setRowDate(e.target.value)}
@@ -770,9 +699,7 @@ export default function NotebookPlusPage() {
 
             <div className="glass-panel rounded-[1.625rem] p-6 sm:p-7">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-lg font-semibold text-[var(--lv-heading)]">
-                  {periodTitle || "Notebook+"}
-                </h2>
+                <h2 className="text-lg font-semibold text-[var(--lv-heading)]">All entries</h2>
                 <PressableButton
                   type="button"
                   variant="primary"
@@ -807,14 +734,14 @@ export default function NotebookPlusPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {monthRows.length === 0 ? (
+                      {ledgerRows.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-4 py-12 text-center text-[var(--lv-muted-strong)]">
-                            No rows this month for this khata. Add one above.
+                            No rows for this khata yet. Add one above — any calendar date.
                           </td>
                         </tr>
                       ) : (
-                        monthRows.map((row) => (
+                        ledgerRows.map((row) => (
                           <tr
                             key={row.id || `${row.date}-${row.sortIndex}`}
                             className="border-b border-[color-mix(in_srgb,var(--lv-glass-edge)_28%,transparent)] last:border-0"
@@ -867,6 +794,34 @@ export default function NotebookPlusPage() {
                         ))
                       )}
                     </tbody>
+                    {ledgerRows.length > 0 ? (
+                      <tfoot>
+                        <tr className="border-t-2 border-[color-mix(in_srgb,var(--lv-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--lv-card)_75%,transparent)] font-semibold text-[var(--lv-heading)]">
+                          <th
+                            scope="row"
+                            className="whitespace-nowrap px-3 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-[var(--lv-accent)]"
+                          >
+                            Grand total
+                          </th>
+                          <td className="whitespace-nowrap px-3 py-3.5 text-right">
+                            {formatLedgerMoney(ledgerTotals.amount)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3.5 text-right">
+                            {formatLedgerMoney(ledgerTotals.paid)}
+                          </td>
+                          <td
+                            className={cn(
+                              "whitespace-nowrap px-3 py-3.5 text-right",
+                              ledgerTotals.balance < 0 && "text-[var(--lv-traffic-critical)]",
+                            )}
+                          >
+                            {formatLedgerMoney(ledgerTotals.balance)}
+                          </td>
+                          <td className="px-3 py-3.5" />
+                          <td className="px-3 py-3.5" />
+                        </tr>
+                      </tfoot>
+                    ) : null}
                   </table>
                 </div>
               )}
