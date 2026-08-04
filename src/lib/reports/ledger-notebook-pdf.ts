@@ -9,6 +9,7 @@ import {
   paintPrintPageBackground,
   printTableAltRowStyles,
   printTableBaseStyles,
+  printTableFootStyles,
   printTableHeadStyles,
 } from "@/lib/reports/pdf-print-theme";
 
@@ -30,6 +31,13 @@ function safeFilePart(name: string): string {
   return name.trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 64) || "Business";
 }
 
+function notebookGrandTotals(rows: LedgerNotebookRowWithBalance[], openingBalance: number) {
+  const amount = rows.reduce((sum, r) => sum + (r.amount > 0 ? r.amount : 0), 0);
+  const paid = rows.reduce((sum, r) => sum + (r.paid > 0 ? r.paid : 0), 0);
+  const balance = rows.length > 0 ? rows[rows.length - 1]!.balance : openingBalance;
+  return { amount, paid, balance };
+}
+
 export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInput): Promise<Blob> {
   const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
     import("jspdf"),
@@ -43,6 +51,7 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
   const contentW = pageW - margin * 2;
 
   const head = [["Date", "Amount", "Paid", "Balance", "Details"]];
+  const totals = notebookGrandTotals(input.rows, input.openingBalance);
 
   const body =
     input.rows.length > 0
@@ -54,6 +63,19 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
           r.details || "—",
         ])
       : [["—", "", "", formatLedgerMoney(input.openingBalance), "No notebook rows for this period."]];
+
+  const foot =
+    input.rows.length > 0
+      ? [
+          [
+            "Grand total",
+            formatLedgerMoney(totals.amount),
+            formatLedgerMoney(totals.paid),
+            formatLedgerMoney(totals.balance),
+            "",
+          ],
+        ]
+      : undefined;
 
   const drawHeader = () => {
     let y = margin;
@@ -90,9 +112,20 @@ export async function generateLedgerNotebookPdfBlob(input: LedgerNotebookPdfInpu
     margin: { left: margin, right: margin, top: margin, bottom: margin },
     head,
     body,
+    foot,
+    showFoot: foot ? "lastPage" : "never",
     styles: printTableBaseStyles,
     headStyles: printTableHeadStyles,
+    footStyles: {
+      ...printTableFootStyles,
+      fontStyle: "bold",
+    },
     alternateRowStyles: printTableAltRowStyles,
+    columnStyles: {
+      1: { halign: "right" },
+      2: { halign: "right" },
+      3: { halign: "right" },
+    },
     willDrawPage: (data) => {
       paintPrintPageBackground(doc, pageW, pageH);
       if (data.pageNumber === 1) drawHeader();
