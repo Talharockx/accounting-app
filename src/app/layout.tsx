@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { MadeByCredit } from "@/components/layout/made-by-credit";
 import { AppProviders } from "@/components/providers";
 import "./globals.css";
 
@@ -32,7 +33,12 @@ export default function RootLayout({
       data-theme="midnight"
     >
       <body className="flex min-h-full flex-col bg-[var(--background)] font-sans text-[var(--foreground)] antialiased">
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <div className="flex min-h-full flex-1 flex-col">
+            <div className="flex-1">{children}</div>
+            <MadeByCredit />
+          </div>
+        </AppProviders>
       </body>
     </html>
   );
